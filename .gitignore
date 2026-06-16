@@ -1,0 +1,11 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Artefatos de teste e logs locais
+/test_output/
+/run.log
+/run.err.log
+
+# VS Code (config local da maquina)
+/.vscode/

@@ -1,0 +1,104 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Sense"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+WaveManager="*res://scripts/wave_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+rendering_device/driver.windows="d3d12"
+
+[shader_globals]
+
+wave_0={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1000)
+}
+wave_1={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1000)
+}
+wave_2={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1000)
+}
+wave_3={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1000)
+}
+wave_4={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1000)
+}
+wave_5={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1000)
+}
+wave_dir_0={
+"type": "vec4",
+"value": Vector4(0, 0, -1, 0)
+}
+wave_dir_1={
+"type": "vec4",
+"value": Vector4(0, 0, -1, 0)
+}
+wave_dir_2={
+"type": "vec4",
+"value": Vector4(0, 0, -1, 0)
+}
+wave_dir_3={
+"type": "vec4",
+"value": Vector4(0, 0, -1, 0)
+}
+wave_dir_4={
+"type": "vec4",
+"value": Vector4(0, 0, -1, 0)
+}
+wave_dir_5={
+"type": "vec4",
+"value": Vector4(0, 0, -1, 0)
+}
+wave_speed={
+"type": "float",
+"value": 50.0
+}
+wave_lifetime={
+"type": "float",
+"value": 0.8
+}
+wave_dist_lifetime={
+"type": "float",
+"value": 0.015
+}
+wave_max_dist={
+"type": "float",
+"value": 220.0
+}
+wave_cone={
+"type": "float",
+"value": 0.0
+}
