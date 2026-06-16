@@ -41,6 +41,9 @@ func _ready() -> void:
 	_build_boxes()
 	_build_tablets()
 
+	# A porta de saida so aparece quando os 5 tablets forem ativados.
+	TabletManager.challenge_complete.connect(spawn_exit_door)
+
 func _build_shell() -> void:
 	var sx := HALF_X * 2.0 + WALL * 2.0
 	var sz := HALF_Z * 2.0 + WALL * 2.0
@@ -271,6 +274,47 @@ func _spawn_tablet(center: Vector3, basis: Basis, normal: Vector3, size: Vector3
 	t.transform = Transform3D(basis.orthonormalized(), center)
 	add_child(t)
 	_tablet_spots.append(center)
+
+# --- Porta de saida -------------------------------------------------------
+
+# Um pouco maior que o personagem (~0.8 x 1.8): largura x altura x espessura.
+const DOOR_SIZE := Vector3(1.4, 2.6, 0.2)
+
+func spawn_exit_door() -> void:
+	# Evita duplicar caso o sinal dispare mais de uma vez.
+	if DoorManager.door != null:
+		return
+	# As quatro paredes, com a normal apontando para dentro da sala.
+	var walls := [
+		{"normal": Vector3.BACK, "fixed": -HALF_Z, "axis": "z"},
+		{"normal": Vector3.FORWARD, "fixed": HALF_Z, "axis": "z"},
+		{"normal": Vector3.RIGHT, "fixed": -HALF_X, "axis": "x"},
+		{"normal": Vector3.LEFT, "fixed": HALF_X, "axis": "x"},
+	]
+	_shuffle(walls)
+	for w in walls:
+		var normal: Vector3 = w["normal"]
+		for _attempt in 24:
+			var along := _tablet_rng.randf_range(-1.0, 1.0)
+			var pos: Vector3
+			if w["axis"] == "z":
+				pos = Vector3(along * (HALF_X - 6.0), DOOR_SIZE.y * 0.5, w["fixed"]) + normal * (DOOR_SIZE.z * 0.5)
+			else:
+				pos = Vector3(w["fixed"], DOOR_SIZE.y * 0.5, along * (HALF_Z - 6.0)) + normal * (DOOR_SIZE.z * 0.5)
+			# O espaco logo a frente da porta precisa estar livre para o jogador chegar.
+			var front := pos + normal * 3.0
+			if _is_free(front.x, front.z, 2.5):
+				_spawn_door(pos, normal)
+				return
+	# Ultimo recurso: centro da parede do fundo.
+	_spawn_door(Vector3(0.0, DOOR_SIZE.y * 0.5, -HALF_Z) + Vector3.BACK * (DOOR_SIZE.z * 0.5), Vector3.BACK)
+
+func _spawn_door(center: Vector3, normal: Vector3) -> void:
+	var d := StaticBody3D.new()
+	d.set_script(load("res://scripts/door.gd"))
+	d.setup(DOOR_SIZE, normal)
+	d.transform = Transform3D(_basis_from_normal(normal).orthonormalized(), center)
+	add_child(d)
 
 # Base ortonormal cuja coluna Z aponta para `n` (face visivel do tablet).
 func _basis_from_normal(n: Vector3) -> Basis:

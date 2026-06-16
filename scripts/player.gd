@@ -29,7 +29,7 @@ func _ready() -> void:
 	WaveManager.player = self
 
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-	if not (args.has("--autotest") or args.has("--tablettest")):
+	if not (args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathmodeltest")):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func get_emit_origin() -> Vector3:
@@ -53,7 +53,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_SPACE:
 			WaveManager.emit_wave(get_emit_origin(), get_emit_dir())
 		elif event.physical_keycode == KEY_E:
-			TabletManager.try_activate(get_emit_origin(), get_look_dir())
+			# E ativa um tablet; sem tablet na mira, tenta abrir a saida.
+			if not TabletManager.try_activate(get_emit_origin(), get_look_dir()):
+				DoorManager.try_open(get_emit_origin(), get_look_dir())
 		elif event.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 

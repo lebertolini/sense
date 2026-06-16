@@ -7,6 +7,8 @@ const INTERACT_RANGE := 4.5         # alcance maximo para ativar (unidades)
 const FACING_MIN := 0.5             # cos do angulo: precisa estar olhando para ele
 
 signal count_changed(activated: int, total: int)
+## Emitido quando o jogador ativa todos os tablets (abre o desafio da saida).
+signal challenge_complete
 
 var tablets: Array = []
 var activated_count := 0
@@ -18,6 +20,15 @@ func register(t) -> void:
 
 func notify_activated(_t) -> void:
 	activated_count += 1
+	count_changed.emit(activated_count, TOTAL)
+	if activated_count >= TOTAL:
+		challenge_complete.emit()
+
+## Limpa o estado (usado ao reiniciar o jogo; os tablets antigos sao liberados
+## junto com a cena).
+func reset() -> void:
+	tablets.clear()
+	activated_count = 0
 	count_changed.emit(activated_count, TOTAL)
 
 ## Tenta ativar o tablet para o qual o jogador esta olhando (mais bem alinhado

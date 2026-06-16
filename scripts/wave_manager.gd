@@ -48,6 +48,31 @@ func _ready() -> void:
 func is_wave_ready() -> bool:
 	return _is_wave_ready
 
+## True se a frente de alguma onda ativa ja alcancou `point` (dentro do alcance
+## maximo). Usado por superficies que precisam reagir a passagem da onda no CPU
+## (ex.: a porta de saida que mantem a moldura acesa depois de revelada).
+func has_reached(point: Vector3) -> bool:
+	for i in N:
+		if not _active[i]:
+			continue
+		var d: float = _origins[i].distance_to(point)
+		if d <= MAX_DIST and _elapsed[i] * SPEED >= d:
+			return true
+	return false
+
+## Reseta as ondas e o cooldown ao estado inicial (usado ao reiniciar o jogo).
+func reset() -> void:
+	for i in N:
+		_elapsed[i] = -1000.0
+		_active[i] = false
+		_origins[i] = Vector3.ZERO
+		_dirs[i] = Vector3.FORWARD
+		RenderingServer.global_shader_parameter_set("wave_%d" % i, Vector4(0, 0, 0, -1000))
+	_next = 0
+	_cooldown_remaining = 0.0
+	_is_wave_ready = true
+	cooldown_changed.emit(1.0, true)
+
 func get_cooldown_progress() -> float:
 	if _is_wave_ready:
 		return 1.0

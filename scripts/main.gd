@@ -3,6 +3,7 @@ extends Node3D
 
 func _ready() -> void:
 	_setup_display()
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
@@ -21,6 +22,10 @@ func _ready() -> void:
 	we.environment = env
 	add_child(we)
 
+	if args.has("--abbathmodeltest"):
+		_setup_abbath_model_test()
+		return
+
 	var level := Node3D.new()
 	level.set_script(load("res://scripts/level.gd"))
 	add_child(level)
@@ -32,6 +37,12 @@ func _ready() -> void:
 	# Vira o player para o centro da sala (apenas yaw).
 	player.look_at(Vector3(0, 1.5, 0), Vector3.UP)
 	player.rotation = Vector3(0, player.rotation.y, 0)
+
+	var abbath := Node3D.new()
+	abbath.name = "Abbath"
+	abbath.set_script(load("res://scripts/abbath.gd"))
+	abbath.set("player", player)
+	add_child(abbath)
 
 	var hud_layer := CanvasLayer.new()
 	hud_layer.name = "HudLayer"
@@ -46,21 +57,60 @@ func _ready() -> void:
 	tablet_hud.set_script(load("res://scripts/tablet_counter_hud.gd"))
 	hud_layer.add_child(tablet_hud)
 
-	if OS.get_cmdline_args().has("--autotest") or OS.get_cmdline_user_args().has("--autotest"):
+	var restart_ui := Control.new()
+	restart_ui.name = "RestartUi"
+	restart_ui.set_script(load("res://scripts/restart_ui.gd"))
+	hud_layer.add_child(restart_ui)
+
+	if args.has("--autotest"):
 		var t := Node.new()
 		t.set_script(load("res://scripts/test_capture.gd"))
 		add_child(t)
 
-	if OS.get_cmdline_args().has("--tablettest") or OS.get_cmdline_user_args().has("--tablettest"):
+	if args.has("--tablettest"):
 		var tt := Node.new()
 		tt.set_script(load("res://scripts/test_tablets.gd"))
 		tt.set("player_ref", player)
 		add_child(tt)
 
+	if args.has("--doortest"):
+		var dt := Node.new()
+		dt.set_script(load("res://scripts/test_doors.gd"))
+		dt.set("player_ref", player)
+		add_child(dt)
+
+	if args.has("--abbathtest"):
+		var at := Node.new()
+		at.set_script(load("res://scripts/test_abbath.gd"))
+		at.set("player_ref", player)
+		at.set("abbath_ref", abbath)
+		add_child(at)
+
+func _setup_abbath_model_test() -> void:
+	var abbath := Node3D.new()
+	abbath.name = "AbbathModelPreview"
+	abbath.set_script(load("res://scripts/abbath.gd"))
+	add_child(abbath)
+
+	var cam := Camera3D.new()
+	cam.name = "AbbathModelCamera"
+	cam.current = true
+	cam.fov = 42.0
+	cam.near = 0.05
+	cam.far = 50.0
+	add_child(cam)
+
+	var t := Node.new()
+	t.set_script(load("res://scripts/test_abbath.gd"))
+	t.set("model_only", true)
+	t.set("abbath_ref", abbath)
+	t.set("camera_ref", cam)
+	add_child(t)
+
 func _setup_display() -> void:
 	## Renderiza no tamanho real da tela conectada (resolucao nativa do monitor).
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-	if args.has("--autotest") or args.has("--tablettest"):
+	if args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathmodeltest"):
 		# Em teste: janela fixa para screenshots deterministicas.
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		get_window().size = Vector2i(1280, 720)
