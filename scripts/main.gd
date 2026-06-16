@@ -2,6 +2,8 @@ extends Node3D
 ## Monta a cena: ambiente escuro com glow, a sala e o player.
 
 func _ready() -> void:
+	_setup_display()
+
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -35,3 +37,15 @@ func _ready() -> void:
 		var t := Node.new()
 		t.set_script(load("res://scripts/test_capture.gd"))
 		add_child(t)
+
+func _setup_display() -> void:
+	## Renderiza no tamanho real da tela conectada (resolucao nativa do monitor).
+	if OS.get_cmdline_args().has("--autotest") or OS.get_cmdline_user_args().has("--autotest"):
+		# Em teste: janela fixa para screenshots deterministicas.
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		get_window().size = Vector2i(1280, 720)
+		return
+	# Acompanha o monitor onde a janela esta e usa o tamanho dele.
+	var screen := DisplayServer.window_get_current_screen()
+	get_window().size = DisplayServer.screen_get_size(screen)
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
