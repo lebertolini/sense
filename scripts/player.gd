@@ -28,7 +28,8 @@ func _ready() -> void:
 
 	WaveManager.player = self
 
-	if not (OS.get_cmdline_args().has("--autotest") or OS.get_cmdline_user_args().has("--autotest")):
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	if not (args.has("--autotest") or args.has("--tablettest")):
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func get_emit_origin() -> Vector3:
@@ -39,6 +40,10 @@ func get_emit_dir() -> Vector3:
 	# para a onda cobrir toda a frente do personagem.
 	return -global_transform.basis.z
 
+func get_look_dir() -> Vector3:
+	# Direcao real da camera (com inclinacao), usada para mirar nos tablets.
+	return -head.global_transform.basis.z
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		rotation.y -= event.relative.x * MOUSE_SENS
@@ -47,6 +52,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_SPACE:
 			WaveManager.emit_wave(get_emit_origin(), get_emit_dir())
+		elif event.physical_keycode == KEY_E:
+			TabletManager.try_activate(get_emit_origin(), get_look_dir())
 		elif event.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 

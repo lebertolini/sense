@@ -41,14 +41,26 @@ func _ready() -> void:
 	wave_hud.set_script(load("res://scripts/wave_cooldown_hud.gd"))
 	hud_layer.add_child(wave_hud)
 
+	var tablet_hud := Label.new()
+	tablet_hud.name = "TabletCounterHud"
+	tablet_hud.set_script(load("res://scripts/tablet_counter_hud.gd"))
+	hud_layer.add_child(tablet_hud)
+
 	if OS.get_cmdline_args().has("--autotest") or OS.get_cmdline_user_args().has("--autotest"):
 		var t := Node.new()
 		t.set_script(load("res://scripts/test_capture.gd"))
 		add_child(t)
 
+	if OS.get_cmdline_args().has("--tablettest") or OS.get_cmdline_user_args().has("--tablettest"):
+		var tt := Node.new()
+		tt.set_script(load("res://scripts/test_tablets.gd"))
+		tt.set("player_ref", player)
+		add_child(tt)
+
 func _setup_display() -> void:
 	## Renderiza no tamanho real da tela conectada (resolucao nativa do monitor).
-	if OS.get_cmdline_args().has("--autotest") or OS.get_cmdline_user_args().has("--autotest"):
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	if args.has("--autotest") or args.has("--tablettest"):
 		# Em teste: janela fixa para screenshots deterministicas.
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		get_window().size = Vector2i(1280, 720)
