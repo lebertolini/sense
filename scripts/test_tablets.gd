@@ -29,6 +29,7 @@ func _run() -> void:
 	print("[tablettest] tablets encontrados: ", total, " / ", TabletManager.TOTAL)
 	if total != TabletManager.TOTAL:
 		push_warning("[tablettest] esperado %d tablets, achou %d" % [TabletManager.TOTAL, total])
+	_report_spread()
 
 	var n: int = mini(DEMO_COUNT, total)
 	for i in n:
@@ -59,6 +60,18 @@ func _run() -> void:
 
 	print("[tablettest] concluido")
 	get_tree().quit()
+
+func _report_spread() -> void:
+	# Mostra posicoes e a menor distancia entre tablets (valida o espalhamento).
+	var ts = TabletManager.tablets
+	var min_d := INF
+	for i in ts.size():
+		var p: Vector3 = ts[i].global_position
+		print("[tablettest]   tablet %d em (%.1f, %.1f, %.1f)" % [i, p.x, p.y, p.z])
+		for j in range(i + 1, ts.size()):
+			var q: Vector3 = ts[j].global_position
+			min_d = minf(min_d, Vector2(p.x, p.z).distance_to(Vector2(q.x, q.z)))
+	print("[tablettest] menor distancia entre tablets: %.1f" % min_d)
 
 func _place_in_front(pl, t) -> void:
 	var n: Vector3 = t.face_normal

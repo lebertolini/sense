@@ -13,7 +13,7 @@ func _ready() -> void:
 	horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	add_theme_font_size_override("font_size", 46)
-	add_theme_color_override("font_color", Color(1.0, 0.85, 0.18))
+	add_theme_color_override("font_color", Color(0.96, 0.98, 1.0))
 	add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.9))
 	add_theme_constant_override("outline_size", 9)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE

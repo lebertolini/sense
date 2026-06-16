@@ -22,6 +22,14 @@ var _box_list: Array = []
 # pilar: {center: Vector3, radius: float, height: float}
 var _pillar_list: Array = []
 
+# Distancia minima entre dois tablets, para nao nascerem grudados.
+const TABLET_MIN_DIST := 26.0
+# RNG proprio dos tablets: aleatorio de verdade a cada partida (o resto da
+# sala continua deterministico via _rng).
+var _tablet_rng := RandomNumberGenerator.new()
+# Posicoes ja ocupadas por tablets, para espalha-los pela sala.
+var _tablet_spots: Array[Vector3] = []
+
 func _ready() -> void:
 	var shader: Shader = load("res://assets/sonar.gdshader")
 	_mat = ShaderMaterial.new()
@@ -144,7 +152,9 @@ func _add_cylinder(center: Vector3, radius: float, height: float) -> void:
 # --- Tablets do desafio ---------------------------------------------------
 
 func _build_tablets() -> void:
-	# 5 tablets: 2 grudados em caixas, 2 em pilares, 1 no chao.
+	# Aleatorio de verdade a cada partida.
+	_tablet_rng.randomize()
+	# 5 tablets: 2 grudados em caixas, 2 em pilares, 1 no chao (ordem embaralhada).
 	# Tamanhos variados para ficar natural.
 	var sizes := [
 		Vector3(1.2, 0.72, 0.08),
@@ -154,6 +164,7 @@ func _build_tablets() -> void:
 		Vector3(1.3, 0.7, 0.09),
 	]
 	var plan := ["box", "box", "pillar", "pillar", "floor"]
+	_shuffle(plan)
 	for i in plan.size():
 		var ok := false
 		match plan[i]:
@@ -163,14 +174,19 @@ func _build_tablets() -> void:
 				ok = _place_tablet_on_pillar(sizes[i])
 			_:
 				ok = _place_tablet_on_floor(sizes[i])
+		# Fallbacks garantem os 5 mesmo se um tipo nao achar lugar valido.
 		if not ok:
-			_place_tablet_on_floor(sizes[i]) # fallback garante os 5
+			ok = _place_tablet_on_floor(sizes[i])
+		if not ok:
+			ok = _place_tablet_on_box(sizes[i])
+		if not ok:
+			_place_tablet_on_floor(sizes[i], true) # ultimo recurso: ignora distancia
 
 func _place_tablet_on_box(size: Vector3) -> bool:
 	if _box_list.is_empty():
 		return false
-	for _attempt in 16:
-		var b: Dictionary = _box_list[_rng.randi() % _box_list.size()]
+	for _attempt in 60:
+		var b: Dictionary = _box_list[_tablet_rng.randi() % _box_list.size()]
 		var bsize: Vector3 = b["size"]
 		var center: Vector3 = b["center"]
 		var yaw: float = b["yaw"]
@@ -179,7 +195,7 @@ func _place_tablet_on_box(size: Vector3) -> bool:
 			continue
 		# Escolhe uma face lateral (nunca o topo).
 		var axes := [Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]
-		var axis: Vector3 = axes[_rng.randi() % 4]
+		var axis: Vector3 = axes[_tablet_rng.randi() % 4]
 		var on_x := absf(axis.x) > 0.5
 		var half := (bsize.x * 0.5) if on_x else (bsize.z * 0.5)
 		var face_w := bsize.z if on_x else bsize.x
@@ -192,8 +208,10 @@ func _place_tablet_on_box(size: Vector3) -> bool:
 		var lo := size.y * 0.5 + 0.2
 		if hi < lo:
 			continue
-		var ty := _rng.randf_range(lo, hi)
+		var ty := _tablet_rng.randf_range(lo, hi)
 		var pos := Vector3(center.x, ty, center.z) + normal * (half + size.z * 0.5 + 0.02)
+		if not _far_enough(pos):
+			continue
 		_spawn_tablet(pos, _basis_from_normal(normal), normal, size)
 		return true
 	return false
@@ -201,35 +219,50 @@ func _place_tablet_on_box(size: Vector3) -> bool:
 func _place_tablet_on_pillar(size: Vector3) -> bool:
 	if _pillar_list.is_empty():
 		return false
-	for _attempt in 16:
-		var p: Dictionary = _pillar_list[_rng.randi() % _pillar_list.size()]
+	for _attempt in 60:
+		var p: Dictionary = _pillar_list[_tablet_rng.randi() % _pillar_list.size()]
 		var radius: float = p["radius"]
 		var center: Vector3 = p["center"]
-		var ang := _rng.randf_range(-PI, PI)
+		var ang := _tablet_rng.randf_range(-PI, PI)
 		var normal := Vector3(cos(ang), 0.0, sin(ang))
 		# Nao muito alto: ate a altura do personagem ou pouco acima.
-		var ty := _rng.randf_range(1.0, 2.3)
+		var ty := _tablet_rng.randf_range(1.0, 2.3)
 		var pos := Vector3(center.x, ty, center.z) + normal * (radius + size.z * 0.5 + 0.02)
+		if not _far_enough(pos):
+			continue
 		_spawn_tablet(pos, _basis_from_normal(normal), normal, size)
 		return true
 	return false
 
-func _place_tablet_on_floor(size: Vector3) -> bool:
+func _place_tablet_on_floor(size: Vector3, force := false) -> bool:
 	var clear := maxf(size.x, size.y) * 0.6 + 0.6
-	for _attempt in 80:
-		var px := _rng.randf_range(-HALF_X + 4.0, HALF_X - 4.0)
-		var pz := _rng.randf_range(-HALF_Z + 4.0, HALF_Z - 4.0)
+	for _attempt in 120:
+		var px := _tablet_rng.randf_range(-HALF_X + 4.0, HALF_X - 4.0)
+		var pz := _tablet_rng.randf_range(-HALF_Z + 4.0, HALF_Z - 4.0)
 		if not _is_free(px, pz, clear):
 			continue
-		var yaw := _rng.randf_range(-PI, PI)
 		var pos := Vector3(px, size.z * 0.5 + 0.02, pz)
+		if not force and not _far_enough(pos):
+			continue
+		var yaw := _tablet_rng.randf_range(-PI, PI)
 		var basis := Basis(Vector3.UP, yaw) * _basis_from_normal(Vector3.UP)
 		_spawn_tablet(pos, basis, Vector3.UP, size)
 		return true
-	# Ultimo recurso: numa area garantidamente livre perto do player.
-	var fpos := Vector3(PLAYER_XZ.x + 9.0, size.z * 0.5 + 0.02, PLAYER_XZ.y)
-	_spawn_tablet(fpos, _basis_from_normal(Vector3.UP), Vector3.UP, size)
+	return false
+
+# True se `pos` esta longe o bastante de todos os tablets ja colocados.
+func _far_enough(pos: Vector3) -> bool:
+	for s in _tablet_spots:
+		if Vector2(pos.x, pos.z).distance_to(Vector2(s.x, s.z)) < TABLET_MIN_DIST:
+			return false
 	return true
+
+func _shuffle(arr: Array) -> void:
+	for i in range(arr.size() - 1, 0, -1):
+		var j := _tablet_rng.randi() % (i + 1)
+		var tmp = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
 
 func _spawn_tablet(center: Vector3, basis: Basis, normal: Vector3, size: Vector3) -> void:
 	var t := StaticBody3D.new()
@@ -237,6 +270,7 @@ func _spawn_tablet(center: Vector3, basis: Basis, normal: Vector3, size: Vector3
 	t.setup(size, normal)
 	t.transform = Transform3D(basis.orthonormalized(), center)
 	add_child(t)
+	_tablet_spots.append(center)
 
 # Base ortonormal cuja coluna Z aponta para `n` (face visivel do tablet).
 func _basis_from_normal(n: Vector3) -> Basis:
