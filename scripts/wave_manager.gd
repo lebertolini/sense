@@ -8,6 +8,10 @@ const LIFETIME := 0.8
 const DIST_LIFETIME := 0.015
 const MAX_DIST := 220.0
 const CONE := 0.0  # 0 = hemisferio frontal completo (toda a frente do personagem)
+const COOLDOWN := 3.0
+
+signal cooldown_changed(progress: float, ready: bool)
+signal wave_used
 
 var _elapsed := []
 var _active := []
@@ -15,6 +19,8 @@ var _origins := []
 var _dirs := []
 var _next := 0
 var _cutoff := 0.0
+var _cooldown_remaining := 0.0
+var _is_wave_ready := true
 
 var player  # referencia opcional ao player (definida pelo player no _ready)
 
@@ -37,8 +43,20 @@ func _ready() -> void:
 
 	# Tempo total ate uma onda sumir por completo em qualquer canto da sala.
 	_cutoff = MAX_DIST / SPEED + LIFETIME + MAX_DIST * DIST_LIFETIME + 0.5
+	cooldown_changed.emit(1.0, true)
 
-func emit_wave(origin: Vector3, dir: Vector3 = Vector3.FORWARD) -> void:
+func is_wave_ready() -> bool:
+	return _is_wave_ready
+
+func get_cooldown_progress() -> float:
+	if _is_wave_ready:
+		return 1.0
+	return clampf(1.0 - _cooldown_remaining / COOLDOWN, 0.0, 1.0)
+
+func emit_wave(origin: Vector3, dir: Vector3 = Vector3.FORWARD) -> bool:
+	if not _is_wave_ready:
+		return false
+
 	_origins[_next] = origin
 	_dirs[_next] = dir.normalized()
 	_elapsed[_next] = 0.0
@@ -47,7 +65,19 @@ func emit_wave(origin: Vector3, dir: Vector3 = Vector3.FORWARD) -> void:
 		"wave_dir_%d" % _next, Vector4(_dirs[_next].x, _dirs[_next].y, _dirs[_next].z, 0.0))
 	_next = (_next + 1) % N
 
+	_is_wave_ready = false
+	_cooldown_remaining = COOLDOWN
+	wave_used.emit()
+	cooldown_changed.emit(0.0, false)
+	return true
+
 func _process(delta: float) -> void:
+	if not _is_wave_ready:
+		_cooldown_remaining = maxf(_cooldown_remaining - delta, 0.0)
+		if _cooldown_remaining <= 0.0:
+			_is_wave_ready = true
+		cooldown_changed.emit(get_cooldown_progress(), _is_wave_ready)
+
 	for i in N:
 		if not _active[i]:
 			continue

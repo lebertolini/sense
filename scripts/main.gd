@@ -33,6 +33,14 @@ func _ready() -> void:
 	player.look_at(Vector3(0, 1.5, 0), Vector3.UP)
 	player.rotation = Vector3(0, player.rotation.y, 0)
 
+	var hud_layer := CanvasLayer.new()
+	hud_layer.name = "HudLayer"
+	add_child(hud_layer)
+	var wave_hud := Control.new()
+	wave_hud.name = "WaveCooldownHud"
+	wave_hud.set_script(load("res://scripts/wave_cooldown_hud.gd"))
+	hud_layer.add_child(wave_hud)
+
 	if OS.get_cmdline_args().has("--autotest") or OS.get_cmdline_user_args().has("--autotest"):
 		var t := Node.new()
 		t.set_script(load("res://scripts/test_capture.gd"))
