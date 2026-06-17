@@ -13,9 +13,12 @@ var player_ref
 var abbath_ref
 var camera_ref
 var model_only := false
+var keep_model_view_open := false
 
 var _out_dir := ""
 var _fails := 0
+var _bg_color := Color(0.60, 0.64, 0.66)
+var _model_turntable := false
 
 func _ready() -> void:
 	_out_dir = ProjectSettings.globalize_path("res://test_output/")
@@ -36,14 +39,18 @@ func _run_model_preview() -> void:
 	ab.set_process(false)
 	ab.global_position = Vector3.ZERO
 	ab.rotation = Vector3.ZERO
-	ab.set_preview_reveal(true)
+	ab.set_model_preview(true)
+	_setup_model_preview_world()
 
-	_check_model("modelo tem bastante detalhe", ab.get_child_count() >= 24)
+	_check_model("modelo 3D do .glb carregou com malhas", ab._body_parts.size() >= 1)
 	_check_model("modelo tem altura assustadora", ab.MODEL_HEIGHT >= 6.0)
+	var fit: AABB = ab._model_local_aabb()
+	var fit_scaled: float = fit.size.y * (ab.MODEL_HEIGHT / maxf(fit.size.y, 0.001))
+	_check_model("modelo foi escalado para a altura da cena", absf(fit_scaled - ab.MODEL_HEIGHT) < 0.05)
 
-	await _capture_model("abbath_model_front", Vector3(0.0, 3.25, -9.0), Vector3(0.0, 3.15, -0.15))
-	await _capture_model("abbath_model_side", Vector3(9.0, 3.25, 0.0), Vector3(0.0, 3.15, -0.15))
-	await _capture_model("abbath_model_three_quarter", Vector3(6.3, 3.55, -7.2), Vector3(0.0, 3.25, -0.15))
+	await _capture_model("abbath_model_front", Vector3(0.0, 3.35, -9.0), Vector3(0.0, 3.35, -0.15), true)
+	await _capture_model("abbath_model_side", Vector3(9.0, 3.35, 0.0), Vector3(0.0, 3.35, -0.15), false)
+	await _capture_model("abbath_model_three_quarter", Vector3(6.3, 3.55, -7.2), Vector3(0.0, 3.35, -0.15), false)
 
 	if _fails == 0:
 		print("[abbathmodeltest] TODOS OS TESTES PASSARAM")
@@ -51,7 +58,16 @@ func _run_model_preview() -> void:
 		push_warning("[abbathmodeltest] %d checagem(ns) FALHARAM" % _fails)
 		print("[abbathmodeltest] %d checagem(ns) FALHARAM" % _fails)
 	print("[abbathmodeltest] concluido")
-	get_tree().quit()
+	if keep_model_view_open:
+		_model_turntable = true
+		set_process(true)
+		print("[abbathmodelview] janela aberta: modelo isolado em turntable, sem mapa/HUD/gameplay")
+	else:
+		get_tree().quit()
+
+func _process(delta: float) -> void:
+	if model_only and _model_turntable and abbath_ref != null:
+		abbath_ref.rotation.y += delta * 0.35
 
 func _run() -> void:
 	await get_tree().process_frame
@@ -194,6 +210,23 @@ func _check_model(label: String, cond: bool) -> void:
 func _midpoint(a: Vector3, b: Vector3) -> Vector3:
 	return (a + b) * 0.5
 
+func _setup_model_preview_world() -> void:
+	var we = get_tree().root.find_child("WorldEnvironment", true, false)
+	if we != null and we is WorldEnvironment:
+		var env: Environment = we.environment
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0.60, 0.64, 0.66)
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.90, 0.92, 0.94)
+		env.ambient_light_energy = 0.80
+		env.glow_enabled = true
+		env.glow_intensity = 0.35
+		env.glow_strength = 0.55
+
+	# Sem chao: fundo liso deixa a silhueta do modelo limpa para a checagem de
+	# enquadramento (a captura mede pixels que diferem do fundo).
+	_bg_color = Color(0.60, 0.64, 0.66)
+
 # Mira a camera do player num ponto (yaw no corpo, pitch na cabeca).
 func _aim_camera_at(pl, target: Vector3) -> void:
 	var cam: Vector3 = pl.head.global_position
@@ -230,7 +263,7 @@ func _capture(tag: String) -> void:
 	img.save_png(path)
 	print("[abbathtest] screenshot: ", path)
 
-func _capture_model(tag: String, eye: Vector3, target: Vector3) -> void:
+func _capture_model(tag: String, eye: Vector3, target: Vector3, analyze_front: bool) -> void:
 	var cam: Camera3D = camera_ref
 	cam.global_position = eye
 	cam.look_at(target, Vector3.UP)
@@ -238,5 +271,63 @@ func _capture_model(tag: String, eye: Vector3, target: Vector3) -> void:
 	await RenderingServer.frame_post_draw
 	var path := "%sshot_%s.png" % [_out_dir, tag]
 	var img := get_viewport().get_texture().get_image()
+	if analyze_front:
+		_analyze_front_model_capture(img)
 	img.save_png(path)
 	print("[abbathmodeltest] screenshot: ", path)
+
+func _analyze_front_model_capture(img: Image) -> void:
+	# Mede a silhueta do modelo como os pixels que diferem do fundo liso, para
+	# confirmar que o .glb aparece, fica centralizado e proporcional a cena.
+	var w := img.get_width()
+	var h := img.get_height()
+	var crop_min_x := int(float(w) * 0.20)
+	var crop_max_x := int(float(w) * 0.80)
+	var min_x := w
+	var min_y := h
+	var max_x := -1
+	var max_y := -1
+	var model_count := 0
+
+	for y in range(0, h, 2):
+		for x in range(crop_min_x, crop_max_x, 2):
+			if _is_model_pixel(img.get_pixel(x, y)):
+				min_x = min(min_x, x)
+				min_y = min(min_y, y)
+				max_x = max(max_x, x)
+				max_y = max(max_y, y)
+				model_count += 1
+
+	if model_count == 0:
+		_check_model("captura encontra o modelo do Abbath", false)
+		return
+
+	var body_h := float(max_y - min_y + 1)
+	_check_model("captura encontra o modelo do Abbath", true)
+	_check_model("captura enquadra o corpo inteiro", body_h > float(h) * 0.70 and body_h < float(h) * 0.99)
+	_check_model("modelo fica centralizado", absf(float(min_x + max_x) * 0.5 - float(w) * 0.5) < float(w) * 0.12)
+	_check_model("topo e pes ficam visiveis no quadro", min_y < int(float(h) * 0.20) and max_y > int(float(h) * 0.80))
+	_check_model("olhos claros aparecem na parte de cima", _has_two_bright_eyes(img, min_x, max_x, min_y, body_h))
+
+func _is_model_pixel(c: Color) -> bool:
+	# Pixel pertence ao modelo se difere o bastante do fundo liso.
+	var dr := absf(c.r - _bg_color.r)
+	var dg := absf(c.g - _bg_color.g)
+	var db := absf(c.b - _bg_color.b)
+	return maxf(dr, maxf(dg, db)) > 0.10
+
+func _has_two_bright_eyes(img: Image, min_x: int, max_x: int, min_y: int, body_h: float) -> bool:
+	var mid_x := int(float(min_x + max_x) * 0.5)
+	var top_y := min_y
+	var bottom_y := min_y + int(body_h * 0.30)
+	var left_count := 0
+	var right_count := 0
+	for y in range(top_y, bottom_y):
+		for x in range(min_x, max_x + 1):
+			var c := img.get_pixel(x, y)
+			if c.r > 0.55 and c.g > 0.70 and c.b > 0.75:
+				if x < mid_x:
+					left_count += 1
+				else:
+					right_count += 1
+	return left_count >= 2 and right_count >= 2
