@@ -30,7 +30,7 @@ const APPROACH_FRACTION := 0.45                  # quanto do trajeto cobre por s
 const MIN_APPROACH_DIST := 5.0                   # nao teleporta colado no jogador
 const SPAWN_MIN_DIST := 28.0                     # spawn aleatorio longe do jogador
 const HIDE_COVER := 0.6                          # 60% do corpo coberto = escondido
-const EYE_HEIGHT := 5.35                         # altura dos olhos (origem da visao)
+const EYE_HEIGHT := 6.10                         # altura dos olhos (origem da visao)
 
 # Amostras verticais do corpo do jogador (a partir dos pes) para a linha de visada.
 const BODY_SAMPLES := [0.2, 0.6, 1.0, 1.4, 1.75]
@@ -43,10 +43,25 @@ var _rng := RandomNumberGenerator.new()
 
 var _body_mat: ShaderMaterial
 var _eye_mat: StandardMaterial3D
+var _model: Node3D                                # raiz do .glb instanciado
+var _body_parts := []                             # MeshInstance3D do corpo (recebem o shader)
+var _model_preview := false                       # mostra os materiais reais do .glb
 
 const EYE_IDLE_ENERGY := 0.7
 const EYE_HUNT_ENERGY := 3.5
-const MODEL_HEIGHT := 6.25
+const MODEL_HEIGHT := 6.65                         # altura final do vulto na cena
+
+# Modelo 3D da criatura (substitui o vulto procedural antigo).
+const MODEL_PATH := "res://assets/abbath.glb"
+# Se o .glb nao encarar -Z (a frente do Abbath), gire-o aqui (em radianos).
+# Este modelo foi autorado encarando +Z, entao gira meia-volta.
+const MODEL_YAW := PI
+# Olhos brilhantes (unico aviso da presenca no escuro). Posicao derivada da
+# caixa do modelo; ajuste estas fracoes se nao casarem com o rosto do .glb.
+const EYE_HEIGHT_FRACTION := 0.905                 # altura dos olhos (fracao da altura)
+const EYE_SPREAD_FRACTION := 0.075                 # separacao (fracao da largura)
+const EYE_FRONT_FRACTION := 0.92                   # avanco a frente (fracao da meia-profundidade)
+const EYE_RADIUS := 0.06
 
 func _ready() -> void:
 	_rng.randomize()
@@ -59,7 +74,7 @@ func _ready() -> void:
 	_eye_mat = StandardMaterial3D.new()
 	_eye_mat.albedo_color = Color.BLACK
 	_eye_mat.emission_enabled = true
-	_eye_mat.emission = Color(1.0, 0.15, 0.12)
+	_eye_mat.emission = Color(0.82, 0.96, 1.0)
 	_eye_mat.emission_energy_multiplier = EYE_IDLE_ENERGY
 
 	_build_body()
@@ -67,149 +82,94 @@ func _ready() -> void:
 	AbbathManager.register(self)
 	teleport_random()
 
-# --- Construcao do vulto --------------------------------------------------
+# --- Construcao do vulto a partir do modelo 3D ----------------------------
 
 func _build_body() -> void:
-	# Origem nos pes. A silhueta evita simetria perfeita: cabeca baixa, torso
-	# inclinado e membros longos demais, para sair do "boneco de capsulas".
-	var pelvis := Vector3(0.0, 2.45, 0.08)
-	var chest := Vector3(0.0, 4.55, -0.20)
-	var neck := Vector3(0.0, 5.18, -0.36)
-	var head := Vector3(0.0, 5.73, -0.48)
+	# Instancia o .glb, normaliza a escala para MODEL_HEIGHT e centra com os pes
+	# na origem. Origem nos pes mantem o resto do codigo (visao, teleporte) igual.
+	var packed: PackedScene = load(MODEL_PATH)
+	_model = packed.instantiate()
+	add_child(_model)
 
-	_add_bone(Vector3(-0.22, 0.18, 0.02), Vector3(-0.36, 2.55, 0.02), 0.115)
-	_add_bone(Vector3(0.24, 0.18, 0.02), Vector3(0.31, 2.48, -0.03), 0.12)
-	_add_bone(Vector3(-0.36, 2.55, 0.02), pelvis + Vector3(-0.12, 0.0, 0.02), 0.16)
-	_add_bone(Vector3(0.31, 2.48, -0.03), pelvis + Vector3(0.16, 0.0, -0.02), 0.15)
-	_add_bone(Vector3(-0.22, 0.12, -0.02), Vector3(-0.56, 0.05, -0.48), 0.08)
-	_add_bone(Vector3(0.24, 0.12, -0.02), Vector3(0.65, 0.05, -0.40), 0.08)
+	_collect_body_parts(_model)
+	_fit_model_to_scene()
+	_apply_body_material()
+	_add_eyes()
 
-	_add_bone(pelvis, chest, 0.20)
-	_add_bone(chest, neck, 0.12)
-	_add_scaled_sphere(pelvis + Vector3(0.0, 0.10, 0.0), Vector3(0.32, 0.20, 0.20))
-	_add_scaled_sphere(chest, Vector3(0.35, 0.54, 0.18))
-	_add_scaled_sphere(head, Vector3(0.34, 0.52, 0.24))
+# Reune todos os MeshInstance3D do modelo (recebem o shader da silhueta).
+func _collect_body_parts(node: Node) -> void:
+	if node is MeshInstance3D:
+		_body_parts.append(node)
+	for child in node.get_children():
+		_collect_body_parts(child)
 
-	for i in range(5):
-		var y := 3.15 + float(i) * 0.28
-		var width := 0.50 - float(i) * 0.045
-		var z := -0.03 - float(i) * 0.055
-		_add_bone(Vector3(-width, y, z), Vector3(width, y + 0.04, z - 0.06), 0.035)
+# Caixa envolvente do modelo no espaco local da raiz do Abbath.
+func _model_local_aabb() -> AABB:
+	var result := AABB()
+	var first := true
+	var inv := global_transform.affine_inverse()
+	for mi in _body_parts:
+		if mi.mesh == null:
+			continue
+		var rel: Transform3D = inv * mi.global_transform
+		var box: AABB = rel * mi.mesh.get_aabb()
+		if first:
+			result = box
+			first = false
+		else:
+			result = result.merge(box)
+	return result
 
-	var shoulder_l := Vector3(-0.48, 4.55, -0.20)
-	var shoulder_r := Vector3(0.50, 4.48, -0.22)
-	var elbow_l := Vector3(-1.08, 3.05, -0.10)
-	var elbow_r := Vector3(1.00, 2.86, -0.02)
-	var wrist_l := Vector3(-0.72, 1.10, -0.18)
-	var wrist_r := Vector3(0.83, 0.88, -0.18)
-	_add_bone(shoulder_l, elbow_l, 0.095)
-	_add_bone(elbow_l, wrist_l, 0.075)
-	_add_bone(shoulder_r, elbow_r, 0.090)
-	_add_bone(elbow_r, wrist_r, 0.070)
-	_add_claws(wrist_l, -1.0)
-	_add_claws(wrist_r, 1.0)
+# Escala uniforme + recentro: altura = MODEL_HEIGHT, pes em y=0, centrado em x/z.
+# Aplica escala e rotacao primeiro e so entao recentra, para o resultado ficar
+# correto com qualquer MODEL_YAW (a rotacao desloca o centro em x/z).
+func _fit_model_to_scene() -> void:
+	var raw := _model_local_aabb()
+	var s := MODEL_HEIGHT / maxf(raw.size.y, 0.001)
+	_model.scale = Vector3(s, s, s)
+	_model.rotation.y = MODEL_YAW
+	var aabb := _model_local_aabb()
+	var cx := aabb.position.x + aabb.size.x * 0.5
+	var cz := aabb.position.z + aabb.size.z * 0.5
+	_model.position = -Vector3(cx, aabb.position.y, cz)
 
-	_add_back_spikes(chest, neck)
-	_add_eye(Vector3(-0.105, 5.80, -0.705), -0.25)
-	_add_eye(Vector3(0.105, 5.78, -0.705), 0.25)
+func _apply_body_material() -> void:
+	for mi in _body_parts:
+		mi.material_override = null if _model_preview else _body_mat
+
+# Dois olhos emissivos perto do topo e a frente do modelo ja dimensionado.
+func _add_eyes() -> void:
+	var aabb := _model_local_aabb()
+	var s := MODEL_HEIGHT / maxf(aabb.size.y, 0.001)
+	var width := aabb.size.x * s
+	var depth := aabb.size.z * s
+	var eye_y := MODEL_HEIGHT * EYE_HEIGHT_FRACTION
+	var eye_x := width * EYE_SPREAD_FRACTION * 0.5
+	var eye_z := -(depth * 0.5) * EYE_FRONT_FRACTION
+	_add_eye(Vector3(-eye_x, eye_y, eye_z))
+	_add_eye(Vector3(eye_x, eye_y, eye_z))
 
 func set_preview_reveal(enabled: bool) -> void:
 	if _body_mat != null:
 		_body_mat.set_shader_parameter("preview_reveal", 0.75 if enabled else 0.0)
 
-func _add_bone(a: Vector3, b: Vector3, radius: float) -> void:
-	var mi := MeshInstance3D.new()
-	var cap := CapsuleMesh.new()
-	cap.radius = radius
-	cap.height = a.distance_to(b)
-	cap.radial_segments = 10
-	cap.rings = 4
-	mi.mesh = cap
-	mi.material_override = _body_mat
-	mi.transform = Transform3D(_basis_from_y_axis(b - a), (a + b) * 0.5)
-	add_child(mi)
+# Liga/desliga a visualizacao do modelo: mostra os materiais reais do .glb
+# (em vez do shader de silhueta) para inspecionar o que foi importado.
+func set_model_preview(enabled: bool) -> void:
+	_model_preview = enabled
+	set_preview_reveal(false)
+	_apply_body_material()
 
-func _add_scaled_sphere(center: Vector3, scale: Vector3) -> void:
+func _add_eye(center: Vector3) -> void:
 	var mi := MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	sm.radius = 1.0
-	sm.height = 2.0
-	sm.radial_segments = 14
-	sm.rings = 7
+	sm.radius = EYE_RADIUS
+	sm.height = EYE_RADIUS * 2.0
+	sm.radial_segments = 12
+	sm.rings = 6
 	mi.mesh = sm
-	mi.material_override = _body_mat
-	mi.position = center
-	mi.scale = scale
-	add_child(mi)
-
-func _add_claws(wrist: Vector3, side: float) -> void:
-	for i in range(4):
-		var spread := (float(i) - 1.5) * 0.09
-		var root := wrist + Vector3(spread * side, -0.02, -0.02)
-		var tip := wrist + Vector3((0.10 + absf(spread) * 0.8) * side, -0.70 - float(i % 2) * 0.08, -0.28)
-		_add_taper(root, tip, 0.025, 0.006)
-
-func _add_back_spikes(chest: Vector3, neck: Vector3) -> void:
-	var points := [
-		Vector3(0.0, 3.75, 0.02),
-		Vector3(0.0, 4.18, -0.06),
-		Vector3(0.0, 4.62, -0.18),
-		Vector3(0.0, 5.02, -0.30),
-	]
-	for p in points:
-		_add_taper(p, p + Vector3(0.0, 0.14, 0.34), 0.035, 0.0)
-
-func _add_taper(a: Vector3, b: Vector3, bottom_radius: float, top_radius: float) -> void:
-	var mi := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.bottom_radius = bottom_radius
-	cm.top_radius = top_radius
-	cm.height = a.distance_to(b)
-	cm.radial_segments = 8
-	mi.mesh = cm
-	mi.material_override = _body_mat
-	mi.transform = Transform3D(_basis_from_y_axis(b - a), (a + b) * 0.5)
-	add_child(mi)
-
-func _basis_from_y_axis(dir: Vector3) -> Basis:
-	var y := dir.normalized()
-	var helper := Vector3.FORWARD
-	if absf(y.dot(helper)) > 0.96:
-		helper = Vector3.RIGHT
-	var x := helper.cross(y).normalized()
-	var z := x.cross(y).normalized()
-	return Basis(x, y, z)
-
-func _add_capsule(center: Vector3, radius: float, height: float) -> void:
-	var mi := MeshInstance3D.new()
-	var cap := CapsuleMesh.new()
-	cap.radius = radius
-	cap.height = height
-	mi.mesh = cap
-	mi.material_override = _body_mat
-	mi.position = center
-	add_child(mi)
-
-func _add_sphere(center: Vector3, radius: float) -> void:
-	var mi := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = radius
-	sm.height = radius * 2.0
-	mi.mesh = sm
-	mi.material_override = _body_mat
-	mi.position = center
-	add_child(mi)
-
-func _add_eye(center: Vector3, slant: float = 0.0) -> void:
-	var mi := MeshInstance3D.new()
-	var cap := CapsuleMesh.new()
-	cap.radius = 0.025
-	cap.height = 0.18
-	cap.radial_segments = 8
-	mi.mesh = cap
 	mi.material_override = _eye_mat
 	mi.position = center
-	mi.rotation.z = slant
 	add_child(mi)
 
 # --- Visao -----------------------------------------------------------------
