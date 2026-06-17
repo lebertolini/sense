@@ -218,10 +218,20 @@ func _setup_model_preview_world() -> void:
 		env.background_color = Color(0.60, 0.64, 0.66)
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		env.ambient_light_color = Color(0.90, 0.92, 0.94)
-		env.ambient_light_energy = 0.80
+		env.ambient_light_energy = 1.05
 		env.glow_enabled = true
 		env.glow_intensity = 0.35
 		env.glow_strength = 0.55
+
+	# Luz frontal de cima mirando o rosto, para o modelo nao ficar escuro demais
+	# no preview (no jogo o corpo usa o shader de silhueta e nao recebe luz).
+	var key := DirectionalLight3D.new()
+	key.name = "ModelPreviewKeyLight"
+	key.light_energy = 1.9
+	key.light_color = Color(1.0, 0.98, 0.94)
+	get_parent().add_child(key)
+	key.position = Vector3(2.0, 8.0, -8.0)
+	key.look_at(Vector3(0.0, 5.2, -0.2), Vector3.UP)
 
 	# Sem chao: fundo liso deixa a silhueta do modelo limpa para a checagem de
 	# enquadramento (a captura mede pixels que diferem do fundo).
