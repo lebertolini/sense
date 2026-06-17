@@ -123,6 +123,13 @@ mecanicas do jogo, use o preview isolado. Ele salva frente, lateral e 3/4 em
 & "C:\Users\Luiz\Documents\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\Luiz\Documents\sense" -- --abbathmodeltest
 ```
 
+Para abrir a modelagem isolada em uma janela e olhar o Abbath fora do gameplay
+(sem mapa, HUD, onda ou jumpscare), use:
+
+```powershell
+& "C:\Users\Luiz\Documents\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\Luiz\Documents\sense" -- --abbathmodelview
+```
+
 ## Rodar normalmente
 ```powershell
 & "C:\Users\Luiz\Documents\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\Luiz\Documents\sense"
