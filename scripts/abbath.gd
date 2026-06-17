@@ -74,7 +74,7 @@ func _ready() -> void:
 	_eye_mat = StandardMaterial3D.new()
 	_eye_mat.albedo_color = Color.BLACK
 	_eye_mat.emission_enabled = true
-	_eye_mat.emission = Color(0.82, 0.96, 1.0)
+	_eye_mat.emission = Color(0.86, 0.91, 1.0)
 	_eye_mat.emission_energy_multiplier = EYE_IDLE_ENERGY
 
 	_build_body()

@@ -26,11 +26,11 @@ global uniform float wave_dist_lifetime;
 global uniform float wave_max_dist;
 global uniform float wave_cone;
 
-uniform vec3 edge_color : source_color = vec3(0.62, 0.86, 1.0); // contorno frio, como nevoa azulada
+uniform vec3 edge_color : source_color = vec3(0.85, 0.90, 1.0); // contorno branco espectral
 uniform float edge_brightness = 2.8;
-uniform float body_fill = 0.006;    // massa quase apagada no centro da silhueta
-uniform float rim_power = 3.0;       // o quao concentrada nas bordas fica a marca
-uniform float rim_threshold = 0.30;  // abaixo disso (centro) NAO marca
+uniform float body_fill = 0.0;       // centro totalmente apagado (so a lateral acende)
+uniform float rim_power = 8.0;       // o quao concentrada nas bordas fica a marca
+uniform float rim_threshold = 0.85;  // so o contorno mais extremo acende (queixo, relevos internos NAO)
 uniform float preview_reveal = 0.0;  // usado pelo --abbathmodeltest, sem onda/game
 
 varying vec3 w_pos;
