@@ -9,6 +9,9 @@ const DIST_LIFETIME := 0.015
 const MAX_DIST := 220.0
 const CONE := 0.0  # 0 = hemisferio frontal completo (toda a frente do personagem)
 const COOLDOWN := 3.0
+const WAVE_SOUND := "res://sounds/wave.ogg"
+const WAVE_SOUND_VOLUME_DB := -2.0
+const WAVE_SOUND_SILENCE_DB := -60.0
 
 signal cooldown_changed(progress: float, ready: bool)
 signal wave_used
@@ -21,6 +24,8 @@ var _next := 0
 var _cutoff := 0.0
 var _cooldown_remaining := 0.0
 var _is_wave_ready := true
+var _wave_sound: AudioStreamPlayer
+var _wave_sound_elapsed := 0.0
 
 var player  # referencia opcional ao player (definida pelo player no _ready)
 
@@ -43,7 +48,25 @@ func _ready() -> void:
 
 	# Tempo total ate uma onda sumir por completo em qualquer canto da sala.
 	_cutoff = MAX_DIST / SPEED + LIFETIME + MAX_DIST * DIST_LIFETIME + 0.5
+	_setup_wave_sound()
 	cooldown_changed.emit(1.0, true)
+
+func _setup_wave_sound() -> void:
+	_wave_sound = AudioStreamPlayer.new()
+	_wave_sound.volume_db = WAVE_SOUND_VOLUME_DB
+	var stream: AudioStream = load(WAVE_SOUND)
+	if stream == null:
+		push_warning("Som da onda nao encontrado em %s." % WAVE_SOUND)
+	else:
+		# A onda deve tocar uma unica vez a cada uso.
+		if stream is AudioStreamOggVorbis:
+			(stream as AudioStreamOggVorbis).loop = false
+		elif stream is AudioStreamMP3:
+			(stream as AudioStreamMP3).loop = false
+		elif stream is AudioStreamWAV:
+			(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_DISABLED
+		_wave_sound.stream = stream
+	add_child(_wave_sound)
 
 func is_wave_ready() -> bool:
 	return _is_wave_ready
@@ -71,6 +94,9 @@ func reset() -> void:
 	_next = 0
 	_cooldown_remaining = 0.0
 	_is_wave_ready = true
+	_wave_sound_elapsed = 0.0
+	if _wave_sound != null:
+		_wave_sound.stop()
 	cooldown_changed.emit(1.0, true)
 
 func get_cooldown_progress() -> float:
@@ -92,11 +118,14 @@ func emit_wave(origin: Vector3, dir: Vector3 = Vector3.FORWARD) -> bool:
 
 	_is_wave_ready = false
 	_cooldown_remaining = COOLDOWN
+	_play_wave_sound()
 	wave_used.emit()
 	cooldown_changed.emit(0.0, false)
 	return true
 
 func _process(delta: float) -> void:
+	_update_wave_sound(delta)
+
 	if not _is_wave_ready:
 		_cooldown_remaining = maxf(_cooldown_remaining - delta, 0.0)
 		if _cooldown_remaining <= 0.0:
@@ -115,3 +144,23 @@ func _process(delta: float) -> void:
 			var o: Vector3 = _origins[i]
 			RenderingServer.global_shader_parameter_set(
 				"wave_%d" % i, Vector4(o.x, o.y, o.z, _elapsed[i]))
+
+func _play_wave_sound() -> void:
+	if _wave_sound == null or _wave_sound.stream == null:
+		return
+	_wave_sound_elapsed = 0.0
+	_wave_sound.volume_db = WAVE_SOUND_VOLUME_DB
+	_wave_sound.play()
+
+func _update_wave_sound(delta: float) -> void:
+	if _wave_sound == null or not _wave_sound.playing:
+		return
+	_wave_sound_elapsed += delta
+	var distance: float = minf(_wave_sound_elapsed * SPEED, MAX_DIST)
+	var distance_ratio: float = distance / MAX_DIST
+	# A amplitude cai conforme o raio da onda cresce. A curva cubica deixa o
+	# fim do arquivo praticamente inaudivel, sem interromper sua cauda.
+	var amplitude: float = pow(1.0 - distance_ratio, 3.0)
+	_wave_sound.volume_db = maxf(
+		WAVE_SOUND_VOLUME_DB + linear_to_db(amplitude),
+		WAVE_SOUND_SILENCE_DB)
