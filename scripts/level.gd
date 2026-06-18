@@ -19,8 +19,9 @@ var _occupied: Array[Vector3] = []
 # Pecas registradas para depois grudar os tablets.
 # caixa: {center: Vector3, size: Vector3, yaw: float}
 var _box_list: Array = []
-# pilar: {center: Vector3, radius: float, height: float}
-var _pillar_list: Array = []
+# pilar: {center: Vector3, radius: float, height: float}.
+# Publico: o Abbath consulta para decidir esconderijos a cada salto.
+var pillars: Array = []
 
 # Distancia minima entre dois tablets, para nao nascerem grudados.
 const TABLET_MIN_DIST := 26.0
@@ -71,7 +72,7 @@ func _build_pillars() -> void:
 				if _is_free(px, pz, r + 1.0):
 					_add_cylinder(Vector3(px, HEIGHT * 0.5, pz), r, HEIGHT)
 					_occupied.append(Vector3(px, pz, r))
-					_pillar_list.append({"center": Vector3(px, HEIGHT * 0.5, pz), "radius": r, "height": HEIGHT})
+					pillars.append({"center": Vector3(px, HEIGHT * 0.5, pz), "radius": r, "height": HEIGHT})
 			z += spacing
 		x += spacing
 
@@ -220,10 +221,10 @@ func _place_tablet_on_box(size: Vector3) -> bool:
 	return false
 
 func _place_tablet_on_pillar(size: Vector3) -> bool:
-	if _pillar_list.is_empty():
+	if pillars.is_empty():
 		return false
 	for _attempt in 60:
-		var p: Dictionary = _pillar_list[_tablet_rng.randi() % _pillar_list.size()]
+		var p: Dictionary = pillars[_tablet_rng.randi() % pillars.size()]
 		var radius: float = p["radius"]
 		var center: Vector3 = p["center"]
 		var ang := _tablet_rng.randf_range(-PI, PI)

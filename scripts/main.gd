@@ -28,6 +28,7 @@ func _ready() -> void:
 		return
 
 	var level := Node3D.new()
+	level.name = "Level"
 	level.set_script(load("res://scripts/level.gd"))
 	add_child(level)
 
@@ -43,6 +44,7 @@ func _ready() -> void:
 	abbath.name = "Abbath"
 	abbath.set_script(load("res://scripts/abbath.gd"))
 	abbath.set("player", player)
+	abbath.set("pillars", level.pillars)
 	add_child(abbath)
 
 	var hud_layer := CanvasLayer.new()
