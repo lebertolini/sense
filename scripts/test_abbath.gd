@@ -125,7 +125,7 @@ func _run() -> void:
 	await get_tree().process_frame
 	var vis_hidden: float = ab.visible_fraction()
 	print("[abbathtest] escondido atras da parede: visivel=%.2f ve=%s" % [vis_hidden, ab.can_see_player()])
-	_check("escondido >=60% deixa de ser visto", vis_hidden <= (1.0 - ab.HIDE_COVER) and not ab.can_see_player())
+	_check("escondido >=60% deixa de ser visto", vis_hidden <= (1.0 - ab.HIDE_COVER_NEAR) and not ab.can_see_player())
 
 	# Estando cacando e perdendo o alvo (escondido), volta ao spawn aleatorio.
 	ab.hunting = true
@@ -160,6 +160,7 @@ func _run() -> void:
 	_check("teleporte aleatorio nasce longe do jogador", ok_far)
 
 	# Aproximacao: salta para mais perto sem grudar no jogador.
+	ab.pillars = []   # cenarios de pilar sao testados depois, sem level montado
 	ab.global_position = base + look * 30.0
 	var d_before: float = ab.global_position.distance_to(pl.global_position)
 	ab.teleport_closer()
@@ -167,6 +168,184 @@ func _run() -> void:
 	print("[abbathtest] aproximacao: antes=%.1f depois=%.1f" % [d_before, d_close])
 	_check("teleport_closer aproxima mas nao gruda",
 		d_close < d_before and d_close >= ab.MIN_APPROACH_DIST - 0.5)
+
+	# --- 4b. Cobertura exigida varia com a distancia -----------------------
+	var cov_near: float = ab.hide_cover_required(ab.CATCH_RANGE + 0.5)
+	var cov_far: float = ab.hide_cover_required(ab.VISION_RANGE)
+	var cov_mid: float = ab.hide_cover_required((ab.CATCH_RANGE + ab.VISION_RANGE) * 0.5)
+	print("[abbathtest] cobertura exigida perto=%.2f meio=%.2f longe=%.2f" % [
+		cov_near, cov_mid, cov_far])
+	_check("longe exige 100%% escondido", absf(cov_far - 1.0) < 0.01)
+	_check("perto exige %d%% escondido" % int(ab.HIDE_COVER_NEAR * 100.0),
+		absf(cov_near - ab.HIDE_COVER_NEAR) < 0.05)
+	_check("exigencia cresce com a distancia", cov_near < cov_mid and cov_mid < cov_far)
+	# A regra de caca usa essa cobertura: longe + qualquer pedacinho visivel = caca;
+	# perto + 30% visivel (i.e. 70% escondido) ja nao basta para cacar.
+	_check("longe + 40%% visivel ainda dispara a caca",
+		ab.would_hunt_at(ab.VISION_RANGE, 0.4))
+	_check("longe + 0%% visivel NAO dispara a caca",
+		not ab.would_hunt_at(ab.VISION_RANGE, 0.0))
+	_check("perto + 30%% visivel NAO dispara a caca",
+		not ab.would_hunt_at(ab.CATCH_RANGE + 1.0, 0.3))
+	_check("perto + 50%% visivel dispara a caca",
+		ab.would_hunt_at(ab.CATCH_RANGE + 1.0, 0.5))
+
+	# --- 4c. Aproximacao por arco frontal/lateral, nao em linha reta -------
+	# Sem pilares, varios saltos a partir da MESMA posicao inicial precisam
+	# espalhar o ponto final pelo arco em torno do olhar do player, e nao cair
+	# sempre na mesma linha reta como a versao antiga.
+	var forward: Vector3 = -pl.global_transform.basis.z
+	forward.y = 0.0
+	forward = forward.normalized()
+	var off_axis := 0
+	var unique_angles := {}
+	var min_cos := 1.0
+	for i in 40:
+		ab.global_position = base + look * 30.0
+		ab.teleport_closer()
+		var v: Vector3 = ab.global_position - pl.global_position
+		v.y = 0.0
+		v = v.normalized()
+		var c := v.dot(forward)
+		if c < 0.985:
+			off_axis += 1
+		if c < min_cos:
+			min_cos = c
+		var bucket := int(round(c * 20.0))
+		unique_angles[bucket] = true
+	print("[abbathtest] aproximacao arco: off_axis=%d/40 angulos=%d cos_min=%.2f" % [
+		off_axis, unique_angles.size(), min_cos])
+	_check("teleport_closer espalha os pontos pelo arco", off_axis >= 25)
+	_check("teleport_closer alcanca lateralidade real", min_cos < 0.4)
+	_check("teleport_closer nao cai atras do player", min_cos > -0.5)
+
+	# --- 4d. Esconderijo atras de pilar (50% por pilar) --------------------
+	# Pilar bem no caminho entre Abbath inicial (longe) e o player.
+	var pillar_center: Vector3 = pl.global_position + look * 12.0
+	pillar_center.y = 0.0
+	var pillar_radius := 1.4
+	var pillar_body := _spawn_pillar(pillar_center, pillar_radius)
+	ab.pillars = [{"center": pillar_center, "radius": pillar_radius, "height": 12.0}]
+	var hides := 0
+	var lateral_left := 0
+	var lateral_right := 0
+	var min_to_pillar := 1e9
+	for i in 60:
+		ab.global_position = base + look * 30.0
+		ab.teleport_closer()
+		var d_p := Vector2(ab.global_position.x - pillar_center.x,
+			ab.global_position.z - pillar_center.z).length()
+		if d_p < pillar_radius * 2.2:
+			hides += 1
+			var to_player: Vector3 = pl.global_position - pillar_center
+			to_player.y = 0.0
+			to_player = to_player.normalized()
+			var lat_axis := Vector3(-to_player.z, 0.0, to_player.x)
+			var rel: Vector3 = ab.global_position - pillar_center
+			var lat_dot: float = rel.x * lat_axis.x + rel.z * lat_axis.z
+			if lat_dot > 0.0:
+				lateral_right += 1
+			else:
+				lateral_left += 1
+			if d_p < min_to_pillar:
+				min_to_pillar = d_p
+	print("[abbathtest] pilares: hides=%d/60 esq=%d dir=%d perto_min=%.2f" % [
+		hides, lateral_left, lateral_right, min_to_pillar])
+	_check("pilar usado como esconderijo perto de 50% das vezes",
+		hides >= 18 and hides <= 42)
+	_check("esconderijo se alterna entre os dois lados do pilar",
+		lateral_left > 0 and lateral_right > 0)
+	_check("escondido fica colado no pilar", min_to_pillar < pillar_radius * 1.8)
+
+	# Dois pilares em sequencia: chance acumulada de esconderijo sobe.
+	var second_center: Vector3 = pl.global_position + look * 22.0
+	second_center.y = 0.0
+	var second_body := _spawn_pillar(second_center, pillar_radius)
+	ab.pillars = [
+		{"center": pillar_center, "radius": pillar_radius, "height": 12.0},
+		{"center": second_center, "radius": pillar_radius, "height": 12.0},
+	]
+	var any_hide := 0
+	for i in 80:
+		ab.global_position = base + look * 35.0
+		ab.teleport_closer()
+		var d_a := Vector2(ab.global_position.x - pillar_center.x,
+			ab.global_position.z - pillar_center.z).length()
+		var d_b := Vector2(ab.global_position.x - second_center.x,
+			ab.global_position.z - second_center.z).length()
+		if d_a < pillar_radius * 2.2 or d_b < pillar_radius * 2.2:
+			any_hide += 1
+	print("[abbathtest] dois pilares: any_hide=%d/80" % any_hide)
+	_check("com 2 pilares, esconderijo acontece em mais de 50%",
+		any_hide >= 50)
+	pillar_body.queue_free()
+	second_body.queue_free()
+	ab.pillars = []
+	await get_tree().process_frame
+
+	# --- 4e. Cobertura de pilar nao auto-cancela a caca --------------------
+	# Apos esconder atras de um pilar, o proprio raycast de Abbath ate o player
+	# bate no pilar (visible_fraction cai a zero). A regra de perda nao pode
+	# disparar dentro do mesmo ciclo: senao Abbath foge no instante seguinte.
+	var lock_pillar_center: Vector3 = pl.global_position + look * 10.0
+	lock_pillar_center.y = 0.0
+	var lock_pillar_radius := 1.4
+	var lock_pillar_body := _spawn_pillar(lock_pillar_center, lock_pillar_radius)
+	ab.pillars = [{"center": lock_pillar_center, "radius": lock_pillar_radius, "height": 12.0}]
+
+	# Forca varios saltos ate cair atras do pilar; checa que _cover_locked acende.
+	var saw_lock := false
+	for i in 40:
+		ab.global_position = base + look * 30.0
+		ab._cover_locked = false
+		ab.teleport_closer()
+		if ab._cover_locked:
+			saw_lock = true
+			break
+	_check("teleport_closer atras de pilar liga a trava de caca", saw_lock)
+
+	# Posiciona Abbath manualmente atras do pilar e roda _process. visible_fraction
+	# vira ~0 (pilar bloqueia), mas com a trava ativa a caca precisa CONTINUAR.
+	var behind_dir: Vector3 = (lock_pillar_center - pl.global_position)
+	behind_dir.y = 0.0
+	behind_dir = behind_dir.normalized()
+	ab.global_position = lock_pillar_center + behind_dir * (lock_pillar_radius + 0.6)
+	ab.face(pl.global_position)
+	ab._cover_locked = true
+	ab.hunting = true
+	ab._timer = ab.TELEPORT_INTERVAL
+	await get_tree().process_frame
+	var vis_behind: float = ab.visible_fraction()
+	ab._process(0.0)
+	print("[abbathtest] atras de pilar: visivel=%.2f hunting=%s locked=%s" % [
+		vis_behind, ab.hunting, ab._cover_locked])
+	_check("atras de pilar o raycast e bloqueado", vis_behind < 0.4)
+	_check("trava mantem a caca mesmo com a visao bloqueada", ab.hunting)
+
+	# Sem a trava (i.e. teleport por arco normal cai em posicao limpa), a regra
+	# normal volta a valer: visible_fraction baixa por causa de cobertura faz
+	# Abbath perder o alvo.
+	ab._cover_locked = false
+	ab._process(0.0)
+	_check("sem trava a regra normal volta a valer", not ab.hunting)
+	lock_pillar_body.queue_free()
+	ab.pillars = []
+	ab.hunting = false
+	ab._timer = ab.TELEPORT_INTERVAL
+	await get_tree().process_frame
+
+	# --- 4f. Sequencia de saltos realmente aproxima ------------------------
+	# Sem pilares (cenario do arco), N saltos consecutivos precisam reduzir a
+	# distancia ate o jogador de forma monotonica em media.
+	ab.pillars = []
+	ab.global_position = base + look * (ab.VISION_RANGE - 2.0)
+	var dists: Array = [ab.global_position.distance_to(pl.global_position)]
+	for i in 6:
+		ab.teleport_closer()
+		dists.append(ab.global_position.distance_to(pl.global_position))
+	print("[abbathtest] cadeia de saltos: %s" % [dists])
+	_check("6 saltos consecutivos chegam perto do MIN_APPROACH_DIST",
+		float(dists[dists.size() - 1]) <= ab.MIN_APPROACH_DIST + 0.5)
 
 	# --- 6. Jumpscare ao chegar perto demais -------------------------------
 	ab.set_process(true)
@@ -246,6 +425,19 @@ func _aim_camera_at(pl, target: Vector3) -> void:
 	var pitch := atan2(to.y, maxf(flat, 0.0001))
 	pl._pitch = pitch
 	pl.head.rotation.x = pitch
+
+# Pilar (cilindro vertical) usado para testar a cobertura por pilares.
+func _spawn_pillar(center: Vector3, radius: float) -> StaticBody3D:
+	var sb := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var shp := CylinderShape3D.new()
+	shp.radius = radius
+	shp.height = 12.0
+	cs.shape = shp
+	sb.add_child(cs)
+	sb.position = Vector3(center.x, 6.0, center.z)
+	get_parent().add_child(sb)
+	return sb
 
 # Parede grande o bastante para cobrir todo o corpo do jogador da visao de Abbath.
 func _spawn_wall(center: Vector3) -> StaticBody3D:
