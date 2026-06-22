@@ -65,10 +65,27 @@ func _ready() -> void:
 	restart_ui.set_script(load("res://scripts/restart_ui.gd"))
 	hud_layer.add_child(restart_ui)
 
+	var debug_hud := PanelContainer.new()
+	debug_hud.set_script(load("res://scripts/debug_hud.gd"))
+	debug_hud.set("abbath_ref", abbath)
+	hud_layer.add_child(debug_hud)
+
 	if args.has("--autotest"):
 		var t := Node.new()
 		t.set_script(load("res://scripts/test_capture.gd"))
 		add_child(t)
+
+	if args.has("--hudposetest"):
+		var hp := Node.new()
+		hp.set_script(load("res://scripts/test_hud_pose.gd"))
+		add_child(hp)
+
+	if args.has("--debughudtest"):
+		var dh := Node.new()
+		dh.set_script(load("res://scripts/test_debug_hud.gd"))
+		dh.set("player_ref", player)
+		dh.set("abbath_ref", abbath)
+		add_child(dh)
 
 	if args.has("--tablettest"):
 		var tt := Node.new()
@@ -116,7 +133,7 @@ func _setup_abbath_model_test(keep_open: bool = false) -> void:
 func _setup_display() -> void:
 	## Renderiza no tamanho real da tela conectada (resolucao nativa do monitor).
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-	if args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathmodeltest") or args.has("--abbathmodelview"):
+	if args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathmodeltest") or args.has("--abbathmodelview") or args.has("--hudposetest") or args.has("--debughudtest"):
 		# Em teste: janela fixa para screenshots deterministicas.
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		get_window().size = Vector2i(1280, 720)

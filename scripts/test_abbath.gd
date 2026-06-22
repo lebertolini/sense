@@ -75,6 +75,151 @@ func _run() -> void:
 
 	var pl = player_ref
 	var ab = abbath_ref
+	pl.set_physics_process(false)
+	ab.set_process(false)
+	AbbathManager.caught = false
+	ab.pillars = []
+
+	var original_player_position: Vector3 = pl.global_position
+
+	# --- Deteccao real -----------------------------------------------------
+	var look: Vector3 = pl.get_emit_dir()
+	look.y = 0.0
+	look = look.normalized()
+	var base := Vector3(pl.global_position.x, 0.0, pl.global_position.z)
+	ab.global_position = base + look * 6.0
+	ab.face(pl.global_position)
+	await get_tree().physics_frame
+	_check("jogador descoberto e no cone e realmente visto", ab.can_see_player())
+	ab.rotation.y += PI
+	_check("jogador fora da tela nao e visto", not ab.can_see_player())
+	ab.face(pl.global_position)
+	var detected_from: Vector3 = ab.global_position
+	ab._process(0.0)
+	_check("loop real inicia a perseguicao ao enxergar", ab.hunting)
+	_check("loop real executa o salto inicial pela metade",
+		ab.global_position.is_equal_approx(detected_from.lerp(Vector3(pl.global_position.x, 0.0, pl.global_position.z), 0.5)))
+	ab.hunting = false
+	ab.has_last_seen_position = false
+	ab.visible_kill_charge = 0.0
+	ab._was_player_visible = false
+
+	# --- Inicio: ultima posicao + metade da distancia ---------------------
+	pl.global_position = Vector3.ZERO
+	ab.global_position = Vector3(20.0, 0.0, 0.0)
+	ab.face(pl.global_position)
+	ab._start_hunt()
+	_check("primeira visao inicia o preparo", ab.hunting)
+	_check("primeira visao grava a posicao atual", ab.last_seen_position.is_equal_approx(Vector3.ZERO))
+	_check("primeiro salto percorre metade da distancia", ab.global_position.is_equal_approx(Vector3(10.0, 0.0, 0.0)))
+	_check("janela inicial tem 10 segundos", is_equal_approx(ab.preparation_remaining, ab.PREPARE_DURATION))
+
+	# Permanecer visivel atualiza o ponto e carrega, mas nao provoca outro salto.
+	pl.global_position = Vector3(-2.0, 0.0, 0.0)
+	var position_before_visible: Vector3 = ab.global_position
+	ab._process_hunt(2.0, true)
+	_check("visao continua atualiza a ultima posicao", ab.last_seen_position.is_equal_approx(Vector3(-2.0, 0.0, 0.0)))
+	_check("visao continua nao provoca saltos repetidos", ab.global_position.is_equal_approx(position_before_visible))
+	_check("tempo visivel acumula para o jumpscare", is_equal_approx(ab.visible_kill_charge, 2.0))
+	_check("quando visivel olha diretamente para o jogador", _faces(ab, pl.global_position))
+
+	# Escondido: congela o ponto e olha para ele enquanto a janela corre.
+	var remembered: Vector3 = ab.last_seen_position
+	ab._process_hunt(3.0, false)
+	_check("escondido preserva a ultima posicao vista", ab.last_seen_position.is_equal_approx(remembered))
+	_check("escondido preserva a carga acumulada", is_equal_approx(ab.visible_kill_charge, 2.0))
+	_check("escondido faz Abbath olhar para o ultimo ponto", _faces(ab, remembered))
+
+	# Reencontro: passo exato de 5 m, carga preservada e janela renovada.
+	pl.global_position = Vector3(-10.0, 0.0, 0.0)
+	var before_reacquire: Vector3 = ab.global_position
+	ab._process_hunt(0.0, true)
+	_check("reencontro teleporta exatamente 5 metros",
+		is_equal_approx(ab.global_position.distance_to(before_reacquire), ab.REACQUIRE_STEP_DISTANCE))
+	_check("reencontro renova a janela de 10 segundos", is_equal_approx(ab.preparation_remaining, ab.PREPARE_DURATION))
+	_check("reencontro nao zera a carga do abate", is_equal_approx(ab.visible_kill_charge, 2.0))
+
+	# Se o ultimo ponto estiver a menos de 5 m, nao ultrapassa nem se move.
+	ab._process_hunt(0.0, false)
+	pl.global_position = ab.global_position + Vector3(3.0, 0.0, 0.0)
+	var before_short_step: Vector3 = ab.global_position
+	ab._process_hunt(0.0, true)
+	_check("passo maior que a distancia mantem Abbath parado", ab.global_position.is_equal_approx(before_short_step))
+
+	# --- Pilar em qualquer salto ------------------------------------------
+	ab.pillars = [{"center": Vector3(0.0, 0.0, 3.0), "radius": 1.4, "height": 12.0}]
+	ab.last_seen_position = Vector3(0.0, 0.0, 20.0)
+	ab.has_last_seen_position = true
+	ab._rng.seed = 91273
+	var used_pillar := 0
+	var direct := 0
+	var lateral_ok := true
+	for i in 100:
+		ab.global_position = Vector3.ZERO
+		if ab._teleport_for_hunt(Vector3(0.0, 0.0, 5.0)):
+			used_pillar += 1
+			var expected_lateral: float = 1.4 * ab.PILLAR_LATERAL_FACTOR
+			lateral_ok = lateral_ok and is_equal_approx(absf(ab.global_position.x), expected_lateral)
+		else:
+			direct += 1
+	_check("pilar proximo tem aproximadamente 50%% de chance", used_pillar >= 35 and used_pillar <= 65)
+	_check("salto direto ainda ocorre quando a chance falha", direct > 0)
+	_check("pilar deixa aproximadamente 50%% do corpo pela lateral", lateral_ok)
+
+	# Pilar a mais de 5 m nao participa da escolha.
+	ab.pillars = [{"center": Vector3(0.0, 0.0, 6.0), "radius": 1.4, "height": 12.0}]
+	ab.global_position = Vector3.ZERO
+	var far_pillar_used: bool = ab._teleport_for_hunt(Vector3(0.0, 0.0, 5.0))
+	_check("pilar alem de 5 metros e ignorado", not far_pillar_used and ab.global_position.is_equal_approx(Vector3(0.0, 0.0, 5.0)))
+	ab.pillars = []
+
+	# --- Encerramento e abate ---------------------------------------------
+	ab.hunting = true
+	ab.has_last_seen_position = true
+	ab.last_seen_position = Vector3.ZERO
+	ab.preparation_remaining = 0.1
+	ab.visible_kill_charge = 4.0
+	ab._was_player_visible = false
+	ab._process_hunt(0.2, false)
+	_check("10 segundos escondido encerram a perseguicao", not ab.hunting)
+	_check("fim da perseguicao zera a carga", is_zero_approx(ab.visible_kill_charge))
+
+	# Estar perto nao mata mais automaticamente.
+	AbbathManager.caught = false
+	pl.global_position = Vector3.ZERO
+	ab.global_position = Vector3(1.0, 0.0, 0.0)
+	ab.pillars = []
+	ab._start_hunt()
+	ab._process_hunt(0.1, true)
+	_check("proximidade por si so nao dispara jumpscare", not AbbathManager.caught)
+
+	# A carga atravessa perdas e reencontros e mata ao totalizar 5 s visiveis.
+	ab.visible_kill_charge = 4.9
+	ab.preparation_remaining = ab.PREPARE_DURATION
+	ab._was_player_visible = true
+	ab._process_hunt(0.2, true)
+	var restart_ui = get_tree().root.find_child("RestartUi", true, false)
+	_check("5 segundos visiveis acumulados disparam jumpscare", AbbathManager.caught)
+	_check("jumpscare mostra a interface de reiniciar", restart_ui != null and restart_ui.visible)
+	if DisplayServer.get_name() != "headless":
+		await _wait(0.1)
+		await _capture("abbath_2_jumpscare")
+
+	pl.global_position = original_player_position
+	if _fails == 0:
+		print("[abbathtest] TODOS OS TESTES PASSARAM")
+	else:
+		push_warning("[abbathtest] %d checagem(ns) FALHARAM" % _fails)
+		print("[abbathtest] %d checagem(ns) FALHARAM" % _fails)
+	print("[abbathtest] concluido")
+	get_tree().quit(_fails)
+
+func _run_legacy() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var pl = player_ref
+	var ab = abbath_ref
 	pl.set_physics_process(false)   # congela o player
 	ab.set_process(false)           # controlamos a criatura manualmente
 	AbbathManager.caught = false
@@ -388,6 +533,15 @@ func _check_model(label: String, cond: bool) -> void:
 
 func _midpoint(a: Vector3, b: Vector3) -> Vector3:
 	return (a + b) * 0.5
+
+func _faces(ab, target: Vector3) -> bool:
+	var toward: Vector3 = target - ab.global_position
+	toward.y = 0.0
+	if toward.length() < 0.001:
+		return true
+	var forward: Vector3 = -ab.global_transform.basis.z
+	forward.y = 0.0
+	return forward.normalized().dot(toward.normalized()) > 0.999
 
 func _setup_model_preview_world() -> void:
 	var we = get_tree().root.find_child("WorldEnvironment", true, false)

@@ -6,20 +6,17 @@ extends Node3D
 ##
 ## Comportamento:
 ## - Teleporta para um ponto aleatorio do mapa a cada TELEPORT_INTERVAL segundos.
-## - Abbath esta sempre virado para o jogador, mesmo quando nao esta cacando.
-## - Se o jogador nao esta suficientemente escondido, Abbath passa a CACAR: a
-##   cada teleporte salta MAIS PERTO do jogador e o intervalo entre teleportes
-##   diminui proporcional a proximidade.
+## - Quando ve o jogador, memoriza sua posicao e salta metade da distancia.
+## - Enquanto ele estiver visivel, atualiza essa memoria e carrega o abate.
+##   Cinco segundos visiveis acumulados disparam o jumpscare.
+## - Se o jogador some, olha para o ultimo ponto por 10 segundos. Reencontra-lo
+##   provoca um salto exato de 5 m e renova essa janela sem zerar a carga.
 ## - A exigencia de "estar escondido" cresce com a distancia: bem longe exige
 ##   100% do corpo coberto (qualquer parte visivel ja dispara a caca); bem perto
 ##   exige apenas HIDE_COVER_NEAR (60%). Entre esses extremos a regra interpola
 ##   linearmente.
-## - A aproximacao nao e em linha reta: o salto cai em algum ponto ao redor do
-##   campo de visao do jogador (frontal ou lateral) e, se houver pilares no
-##   trajeto, cada pilar tem 50% de chance de virar esconderijo (Abbath aparece
-##   atras dele com cerca de 30% do corpo ainda visivel).
-## - Se Abbath chega perto demais (CATCH_RANGE) dispara o jumpscare e a tela de
-##   reiniciar.
+## - Em qualquer salto, um pilar a frente e a ate 5 m tem 50% de chance de ser
+##   usado. Abbath fica atras dele, 50% exposto para a ultima posicao vista.
 
 # Limites internos do mapa (espelham scripts/level.gd) com margem.
 const HALF_X := 60.0
@@ -29,27 +26,23 @@ const EDGE_MARGIN := 4.0
 const VISION_RANGE := 45.0                       # alcance maximo da visao
 const VISION_COS := 0.819                        # cos(35°): semiangulo do cone
 const TELEPORT_INTERVAL := 5.0                   # intervalo base (fora de caca)
-const MIN_TELEPORT_INTERVAL := 1.0               # intervalo minimo (bem perto)
-const CATCH_RANGE := 3.5                         # distancia que dispara o jumpscare
-const APPROACH_FRACTION := 0.45                  # quanto do trajeto cobre por salto
-const MIN_APPROACH_DIST := 5.0                   # nao teleporta colado no jogador
+const CATCH_RANGE := 3.5                         # referencia da curva de cobertura
 const SPAWN_MIN_DIST := 28.0                     # spawn aleatorio longe do jogador
 const HIDE_COVER_NEAR := 0.6                     # bem perto: 60% coberto ja conta como escondido
 const HIDE_COVER_FAR := 1.0                      # bem longe: precisa estar 100% coberto
 const HIDE_COVER := HIDE_COVER_NEAR               # compat: regra "minima" usada na visao a curta distancia
 const EYE_HEIGHT := 6.10                         # altura dos olhos (origem da visao)
 
-# Aproximacao: arco ao redor da direcao do olhar do player onde o teleporte
-# pode aterrissar (em radianos). PI*0.61 ~ 110 graus de cada lado: frente +
-# laterais, evitando que Abbath caia diretamente atras do jogador.
-const APPROACH_ARC := PI * 0.61
-# Chance, por pilar candidato, de Abbath usar o pilar como esconderijo no
-# proximo teleporte. Rolada de forma independente para cada pilar entre Abbath
-# e o jogador, do mais proximo ao mais longe do jogador.
+const PREPARE_DURATION := 10.0                   # janela para reencontrar o jogador
+const JUMPSCARE_VISIBLE_DURATION := 5.0           # visao acumulada necessaria para matar
+const REACQUIRE_STEP_DISTANCE := 5.0             # salto apos reencontrar o jogador
+const PILLAR_SEARCH_DISTANCE := 5.0               # alcance da busca por pilares em cada salto
+
+# Chance unica de usar o pilar valido mais proximo em cada salto de caca.
 const PILLAR_COVER_CHANCE := 0.5
 # Quanto Abbath desliza para o lado quando se esconde atras de um pilar
-# (fracao do raio do pilar). Calibrado para deixar ~30% do corpo visivel.
-const PILLAR_LATERAL_FACTOR := 0.85
+# (fracao do raio do pilar). Calibrado para deixar ~50% do corpo visivel.
+const PILLAR_LATERAL_FACTOR := 1.15
 # Folga atras do pilar (em unidades) entre o raio e o corpo de Abbath.
 const PILLAR_BEHIND_MARGIN := 0.6
 
@@ -58,15 +51,14 @@ const BODY_SAMPLES := [0.2, 0.6, 1.0, 1.4, 1.75]
 
 var player                                       # referencia ao jogador
 var pillars: Array = []                          # cilindros do mapa: {center, radius, height}
-var hunting := false                             # true enquanto o alvo nao esta bem coberto
+var hunting := false                             # true durante o preparo para abate
+var last_seen_position := Vector3.ZERO            # ultimo ponto onde o jogador esteve visivel
+var has_last_seen_position := false
+var preparation_remaining := 0.0                  # tempo restante da janela atual
+var visible_kill_charge := 0.0                    # segundos visiveis acumulados na caca
 var _timer := TELEPORT_INTERVAL
-var _current_interval := TELEPORT_INTERVAL
 var _rng := RandomNumberGenerator.new()
-# True quando o ultimo salto foi atras de um pilar. Nesse caso o pilar bloqueia
-# o raycast da visao DO PROPRIO Abbath (ele tambem perderia o player), mas a
-# intencao do salto e justamente espreitar pelo lado. Mantemos a caca ate o
-# proximo teleporte, que reavalia normalmente.
-var _cover_locked := false
+var _was_player_visible := false
 
 var _body_mat: ShaderMaterial
 var _eye_mat: StandardMaterial3D
@@ -253,23 +245,14 @@ func can_see_player() -> bool:
 	var dist := global_position.distance_to(player.global_position)
 	return would_hunt_at(dist, visible_fraction())
 
-# A caca nao depende mais do cone: Abbath sempre olha para o jogador. A trava
-# da aproximacao agressiva e a cobertura exigida na distancia atual.
+# Compatibilidade para chamadas externas: na nova caca, perseguir exige que o
+# jogador esteja realmente dentro da visao, e nao apenas descoberto no mapa.
 func can_hunt_player() -> bool:
-	if player == null:
-		return false
-	var dist := global_position.distance_to(player.global_position)
-	return would_hunt_at(dist, visible_fraction())
+	return can_see_player()
 
 # --- Teleporte -------------------------------------------------------------
 
-# Intervalo proporcional a proximidade: perto = mais rapido, longe = base.
-func compute_interval(dist: float) -> float:
-	var t := clampf(dist / VISION_RANGE, 0.0, 1.0)
-	return lerpf(MIN_TELEPORT_INTERVAL, TELEPORT_INTERVAL, t)
-
 func teleport_random() -> void:
-	_cover_locked = false
 	var pos := global_position
 	for _attempt in 40:
 		var px := _rng.randf_range(-HALF_X + EDGE_MARGIN, HALF_X - EDGE_MARGIN)
@@ -286,97 +269,125 @@ func teleport_random() -> void:
 	else:
 		rotation.y = _rng.randf_range(-PI, PI)
 
-# Salta para mais perto do jogador. A direcao nao e a linha reta: cai num
-# angulo aleatorio em torno do olhar do player (frente ou lateral). Se houver
-# pilares no trajeto, cada um tem PILLAR_COVER_CHANCE de virar esconderijo
-# (Abbath aparece atras dele, com ~30% do corpo ainda a vista).
-func teleport_closer() -> void:
-	if player == null:
-		return
-	var to: Vector3 = player.global_position - global_position
-	to.y = 0.0
-	var dist := to.length()
-	if dist < 0.001:
-		return
-	var target_dist := maxf(dist * (1.0 - APPROACH_FRACTION), MIN_APPROACH_DIST)
-	var new_pos := _pick_pillar_cover_pos(dist)
-	var used_cover := new_pos != Vector3.INF
-	if not used_cover:
-		new_pos = _lateral_approach_pos(target_dist)
-	new_pos.y = 0.0
-	new_pos.x = clampf(new_pos.x, -HALF_X + EDGE_MARGIN, HALF_X - EDGE_MARGIN)
-	new_pos.z = clampf(new_pos.z, -HALF_Z + EDGE_MARGIN, HALF_Z - EDGE_MARGIN)
-	global_position = new_pos
-	_cover_locked = used_cover
+# Inicia a caca usando a posicao realmente vista neste instante. O primeiro
+# salto vai para a metade da distancia, salvo quando um pilar proximo e usado.
+func _start_hunt() -> void:
+	hunting = true
+	last_seen_position = player.global_position
+	last_seen_position.y = 0.0
+	has_last_seen_position = true
+	preparation_remaining = PREPARE_DURATION
+	visible_kill_charge = 0.0
+	_was_player_visible = true
+	var current := global_position
+	var midpoint := current.lerp(last_seen_position, 0.5)
+	midpoint.y = 0.0
+	_teleport_for_hunt(midpoint)
 	face(player.global_position)
+	_update_eyes()
 
-# Direcao horizontal que o jogador esta olhando (so yaw). Cai em FORWARD se o
-# vetor for degenerado.
-func _player_forward() -> Vector3:
-	var f: Vector3 = -player.global_transform.basis.z
-	f.y = 0.0
-	var l := f.length()
-	if l < 0.001:
-		return Vector3.FORWARD
-	return f / l
+# Processamento isolado para a regra poder ser testada deterministicamente.
+func _process_hunt(delta: float, player_visible: bool) -> void:
+	if player_visible:
+		last_seen_position = player.global_position
+		last_seen_position.y = 0.0
+		has_last_seen_position = true
+		face(player.global_position)
 
-# Posicao final para uma aproximacao lateral/frontal: random no arco em torno
-# do olhar do player, a `target_dist` dele. Angulo 0 = na cara do player;
-# +-APPROACH_ARC ja entra na zona lateral. Nunca passa para tras (essa zona so
-# e acessada por trips de pilar).
-func _lateral_approach_pos(target_dist: float) -> Vector3:
-	var angle := _rng.randf_range(-APPROACH_ARC, APPROACH_ARC)
-	var dir := _player_forward().rotated(Vector3.UP, angle)
-	return Vector3(
-		player.global_position.x + dir.x * target_dist,
-		0.0,
-		player.global_position.z + dir.z * target_dist
-	)
+		# So avanca ao REENCONTRAR. Permanecer visivel apenas carrega o abate.
+		if not _was_player_visible:
+			_teleport_reacquire_step()
+			preparation_remaining = PREPARE_DURATION
+			face(player.global_position)
 
-# Procura um pilar entre Abbath e o player para usar como cobertura. Roda
-# PILLAR_COVER_CHANCE por candidato (do mais perto ao player ao mais longe);
-# o primeiro sorteado vence. Retorna Vector3.INF quando nenhum aceita.
-func _pick_pillar_cover_pos(current_dist: float) -> Vector3:
-	if player == null or pillars.is_empty():
+		visible_kill_charge += delta
+		if visible_kill_charge >= JUMPSCARE_VISIBLE_DURATION:
+			_catch()
+			return
+	elif has_last_seen_position:
+		face(last_seen_position)
+
+	preparation_remaining -= delta
+	_was_player_visible = player_visible
+	if preparation_remaining <= 0.0:
+		_end_hunt()
+
+# Ao reencontrar, salta exatamente 5 m. Se o ponto estiver mais perto que o
+# passo, fica parado como especificado.
+func _teleport_reacquire_step() -> bool:
+	var to_target := last_seen_position - global_position
+	to_target.y = 0.0
+	var distance := to_target.length()
+	if distance < REACQUIRE_STEP_DISTANCE:
+		return false
+	var destination := global_position + to_target / distance * REACQUIRE_STEP_DISTANCE
+	_teleport_for_hunt(destination)
+	return true
+
+# Todo salto de caca passa pela mesma chance de pilar. O alvo usado tanto para
+# escolher a frente quanto para calcular "atras" e sempre a ultima posicao vista.
+func _teleport_for_hunt(direct_destination: Vector3) -> bool:
+	var pillar_position := _pick_nearby_pillar_cover_pos()
+	var used_pillar := pillar_position != Vector3.INF
+	var destination := pillar_position if used_pillar else direct_destination
+	destination.y = 0.0
+	destination.x = clampf(destination.x, -HALF_X + EDGE_MARGIN, HALF_X - EDGE_MARGIN)
+	destination.z = clampf(destination.z, -HALF_Z + EDGE_MARGIN, HALF_Z - EDGE_MARGIN)
+	global_position = destination
+	if has_last_seen_position:
+		face(last_seen_position)
+	return used_pillar
+
+# Considera pilares a frente e a no maximo 5 m. Havendo candidatos, faz uma
+# unica rolagem de 50% e usa o mais proximo.
+func _pick_nearby_pillar_cover_pos() -> Vector3:
+	if not has_last_seen_position or pillars.is_empty():
 		return Vector3.INF
-	var pp: Vector3 = player.global_position
+	var toward_target := last_seen_position - global_position
+	toward_target.y = 0.0
+	if toward_target.length() < 0.001:
+		return Vector3.INF
+	toward_target = toward_target.normalized()
 	var candidates: Array = []
-	for p in pillars:
-		var pc: Vector3 = p["center"]
-		var pr: float = p["radius"]
-		var d2p := Vector2(pc.x - pp.x, pc.z - pp.z).length()
-		# Precisa estar entre Abbath e o player, longe o suficiente para nao
-		# nascer dentro do CATCH_RANGE.
-		if d2p >= current_dist:
+	for pillar in pillars:
+		var center: Vector3 = pillar["center"]
+		var from_abbath := center - global_position
+		from_abbath.y = 0.0
+		var distance := from_abbath.length()
+		if distance > PILLAR_SEARCH_DISTANCE or distance < 0.001:
 			continue
-		if d2p <= CATCH_RANGE + pr + 0.5:
+		if toward_target.dot(from_abbath / distance) <= 0.0:
 			continue
-		candidates.append({"center": pc, "radius": pr, "d2p": d2p})
-	candidates.sort_custom(func(a, b): return a["d2p"] < b["d2p"])
-	for c in candidates:
-		if _rng.randf() < PILLAR_COVER_CHANCE:
-			return _position_behind_pillar(c["center"], c["radius"])
-	return Vector3.INF
-
-# Coloca Abbath atras do pilar (lado oposto ao player) com um deslize lateral
-# para o corpo "espreitar" pela borda. Lado esquerdo/direito sai aleatorio.
-func _position_behind_pillar(pc: Vector3, pr: float) -> Vector3:
-	var to: Vector3 = pc - player.global_position
-	to.y = 0.0
-	var d := to.length()
-	if d < 0.001:
+		candidates.append({"center": center, "radius": float(pillar["radius"]), "distance": distance})
+	if candidates.is_empty() or _rng.randf() >= PILLAR_COVER_CHANCE:
 		return Vector3.INF
-	var dir := to / d
-	var lat := Vector3(-dir.z, 0.0, dir.x)
-	var lateral := pr * PILLAR_LATERAL_FACTOR
+	candidates.sort_custom(func(a, b): return a["distance"] < b["distance"])
+	var chosen = candidates[0]
+	return _position_behind_pillar(chosen["center"], chosen["radius"])
+
+# "Atras" e calculado a partir da ultima posicao vista, nao da posicao atual
+# real do jogador. O deslocamento lateral deixa cerca de metade do corpo a vista.
+func _position_behind_pillar(center: Vector3, radius: float) -> Vector3:
+	var away_from_last_seen := center - last_seen_position
+	away_from_last_seen.y = 0.0
+	if away_from_last_seen.length() < 0.001:
+		return Vector3.INF
+	var direction := away_from_last_seen.normalized()
+	var lateral_axis := Vector3(-direction.z, 0.0, direction.x)
+	var lateral := radius * PILLAR_LATERAL_FACTOR
 	if _rng.randf() < 0.5:
 		lateral = -lateral
-	var behind := pr + PILLAR_BEHIND_MARGIN
-	return Vector3(
-		pc.x + dir.x * behind + lat.x * lateral,
-		0.0,
-		pc.z + dir.z * behind + lat.z * lateral
-	)
+	return center + direction * (radius + PILLAR_BEHIND_MARGIN) + lateral_axis * lateral
+
+func _end_hunt() -> void:
+	hunting = false
+	has_last_seen_position = false
+	preparation_remaining = 0.0
+	visible_kill_charge = 0.0
+	_was_player_visible = false
+	teleport_random()
+	_timer = TELEPORT_INTERVAL
+	_update_eyes()
 
 # Gira (so yaw) para encarar um ponto. -Z e a frente do vulto.
 func face(target: Vector3) -> void:
@@ -392,38 +403,18 @@ func _process(delta: float) -> void:
 	if player == null or AbbathManager.caught:
 		return
 
-	face(player.global_position)
-
-	if _cover_locked or can_hunt_player():
-		hunting = true
-		var dist := global_position.distance_to(player.global_position)
-		if dist <= CATCH_RANGE:
-			_catch()
-			return
-		_current_interval = compute_interval(dist)
-	elif hunting:
-		# Jogador ficou coberto o bastante para a distancia: perde a caca e
-		# volta para um spawn aleatorio.
-		hunting = false
-		teleport_random()
-		_timer = TELEPORT_INTERVAL
-		_current_interval = TELEPORT_INTERVAL
-		_update_eyes()
+	var player_visible := can_see_player()
+	if hunting:
+		_process_hunt(delta, player_visible)
 		return
-	else:
-		_current_interval = TELEPORT_INTERVAL
-
-	_update_eyes()
+	if player_visible:
+		_start_hunt()
+		return
 
 	_timer -= delta
 	if _timer <= 0.0:
-		if hunting:
-			teleport_closer()
-			var d := global_position.distance_to(player.global_position)
-			_timer = compute_interval(d)
-		else:
-			teleport_random()
-			_timer = TELEPORT_INTERVAL
+		teleport_random()
+		_timer = TELEPORT_INTERVAL
 
 func _update_eyes() -> void:
 	if _eye_mat != null:
