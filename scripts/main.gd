@@ -60,6 +60,11 @@ func _ready() -> void:
 	tablet_hud.set_script(load("res://scripts/tablet_counter_hud.gd"))
 	hud_layer.add_child(tablet_hud)
 
+	var tablet_minigame := Control.new()
+	tablet_minigame.name = "TabletMinigameUi"
+	tablet_minigame.set_script(load("res://scripts/tablet_minigame_ui.gd"))
+	hud_layer.add_child(tablet_minigame)
+
 	var restart_ui := Control.new()
 	restart_ui.name = "RestartUi"
 	restart_ui.set_script(load("res://scripts/restart_ui.gd"))

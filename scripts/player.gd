@@ -15,6 +15,7 @@ const WALKING_SOUND := "res://sounds/walking.ogg"
 var head: Camera3D
 var _pitch := -0.12
 var _footsteps: AudioStreamPlayer
+var _tablet_minigame_active := false
 
 func _ready() -> void:
 	var cs := CollisionShape3D.new()
@@ -92,17 +93,24 @@ func get_look_dir() -> Vector3:
 	# Direcao real da camera (com inclinacao), usada para mirar nos tablets.
 	return -head.global_transform.basis.z
 
+func set_tablet_minigame_active(active: bool) -> void:
+	_tablet_minigame_active = active
+
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not _tablet_minigame_active:
 		rotation.y -= event.relative.x * MOUSE_SENS
 		_pitch = clamp(_pitch - event.relative.y * MOUSE_SENS, -1.4, 1.4)
 		head.rotation.x = _pitch
 	elif event is InputEventKey and event.pressed and not event.echo:
+		if _tablet_minigame_active:
+			if event.physical_keycode == KEY_E:
+				TabletManager.cancel_minigame()
+			return
 		if event.physical_keycode == KEY_SPACE:
 			WaveManager.emit_wave(get_emit_origin(), get_emit_dir())
 		elif event.physical_keycode == KEY_E:
 			# E ativa um tablet; sem tablet na mira, tenta abrir a saida.
-			if not TabletManager.try_activate(get_emit_origin(), get_look_dir()):
+			if not TabletManager.try_activate(get_emit_origin(), get_look_dir(), self):
 				DoorManager.try_open(get_emit_origin(), get_look_dir())
 		elif event.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
