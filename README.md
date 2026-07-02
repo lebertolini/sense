@@ -91,7 +91,8 @@ textos das mesmas chaves para o novo locale em `i18n.gd`.
 Os scripts são organizados por domínio dentro de `scripts/`:
 
 - `scenes/main.tscn` — cena principal; aponta para `scripts/main.gd`
-- `scripts/main.gd` — ponto de composição: monta ambiente, sala, player, HUDs e (em teste) os harnesses
+- `scenes/hud.tscn` — camada de interface (`CanvasLayer`) com os HUDs; instanciada pelo `main.gd`
+- `scripts/main.gd` — ponto de composição: monta ambiente, sala, player, instancia o HUD e (em teste) os harnesses
 
 **`scripts/managers/`** (autoloads — estado global e coordenação)
 - `wave_manager.gd` — ondas, carga compartilhada das habilidades, super-audição e parâmetros globais do shader

@@ -1,0 +1,24 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" uid="uid://hvr0y5ifuuw8" path="res://scripts/ui/wave_cooldown_hud.gd" id="1_wave"]
+[ext_resource type="Script" uid="uid://cfs3bx6h8wddd" path="res://scripts/ui/tablet_counter_hud.gd" id="2_counter"]
+[ext_resource type="Script" uid="uid://dhdkgg4p3gi5j" path="res://scripts/ui/tablet_minigame_ui.gd" id="3_minigame"]
+[ext_resource type="Script" uid="uid://c4w88ulvc1x3u" path="res://scripts/ui/restart_ui.gd" id="4_restart"]
+[ext_resource type="Script" uid="uid://bjxvbfpvi2vwr" path="res://scripts/ui/debug_hud.gd" id="5_debug"]
+
+[node name="HudLayer" type="CanvasLayer"]
+
+[node name="WaveCooldownHud" type="Control" parent="."]
+script = ExtResource("1_wave")
+
+[node name="TabletCounterHud" type="Label" parent="."]
+script = ExtResource("2_counter")
+
+[node name="TabletMinigameUi" type="Control" parent="."]
+script = ExtResource("3_minigame")
+
+[node name="RestartUi" type="Control" parent="."]
+script = ExtResource("4_restart")
+
+[node name="DebugHud" type="PanelContainer" parent="."]
+script = ExtResource("5_debug")

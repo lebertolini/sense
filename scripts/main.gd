@@ -47,33 +47,11 @@ func _ready() -> void:
 	abbath.set("pillars", level.pillars)
 	add_child(abbath)
 
-	var hud_layer := CanvasLayer.new()
-	hud_layer.name = "HudLayer"
+	# HUD montado como cena (scenes/hud.tscn). O abbath_ref e injetado antes de
+	# entrar na arvore, para o _ready do painel de debug ja ter a referencia.
+	var hud_layer := (load("res://scenes/hud.tscn") as PackedScene).instantiate()
+	hud_layer.get_node("DebugHud").set("abbath_ref", abbath)
 	add_child(hud_layer)
-	var wave_hud := Control.new()
-	wave_hud.name = "WaveCooldownHud"
-	wave_hud.set_script(load("res://scripts/ui/wave_cooldown_hud.gd"))
-	hud_layer.add_child(wave_hud)
-
-	var tablet_hud := Label.new()
-	tablet_hud.name = "TabletCounterHud"
-	tablet_hud.set_script(load("res://scripts/ui/tablet_counter_hud.gd"))
-	hud_layer.add_child(tablet_hud)
-
-	var tablet_minigame := Control.new()
-	tablet_minigame.name = "TabletMinigameUi"
-	tablet_minigame.set_script(load("res://scripts/ui/tablet_minigame_ui.gd"))
-	hud_layer.add_child(tablet_minigame)
-
-	var restart_ui := Control.new()
-	restart_ui.name = "RestartUi"
-	restart_ui.set_script(load("res://scripts/ui/restart_ui.gd"))
-	hud_layer.add_child(restart_ui)
-
-	var debug_hud := PanelContainer.new()
-	debug_hud.set_script(load("res://scripts/ui/debug_hud.gd"))
-	debug_hud.set("abbath_ref", abbath)
-	hud_layer.add_child(debug_hud)
 
 	if args.has("--autotest"):
 		var t := Node.new()
