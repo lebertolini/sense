@@ -32,7 +32,7 @@ var _tablet_rng := RandomNumberGenerator.new()
 var _tablet_spots: Array[Vector3] = []
 
 func _ready() -> void:
-	var shader: Shader = load("res://assets/sonar.gdshader")
+	var shader: Shader = load("res://assets/shaders/sonar.gdshader")
 	_mat = ShaderMaterial.new()
 	_mat.shader = shader
 	_rng.seed = 20260616
@@ -270,7 +270,7 @@ func _shuffle(arr: Array) -> void:
 
 func _spawn_tablet(center: Vector3, basis: Basis, normal: Vector3, size: Vector3) -> void:
 	var t := StaticBody3D.new()
-	t.set_script(load("res://scripts/tablet.gd"))
+	t.set_script(load("res://scripts/gameplay/tablet.gd"))
 	t.setup(size, normal)
 	t.transform = Transform3D(basis.orthonormalized(), center)
 	add_child(t)
@@ -312,7 +312,7 @@ func spawn_exit_door() -> void:
 
 func _spawn_door(center: Vector3, normal: Vector3) -> void:
 	var d := StaticBody3D.new()
-	d.set_script(load("res://scripts/door.gd"))
+	d.set_script(load("res://scripts/gameplay/door.gd"))
 	d.setup(DOOR_SIZE, normal)
 	d.transform = Transform3D(_basis_from_normal(normal).orthonormalized(), center)
 	add_child(d)

@@ -98,7 +98,7 @@ var _sound: AudioStreamPlayer3D
 func _ready() -> void:
 	_rng.randomize()
 
-	var shader: Shader = load("res://assets/abbath.gdshader")
+	var shader: Shader = load("res://assets/shaders/abbath.gdshader")
 	_body_mat = ShaderMaterial.new()
 	_body_mat.shader = shader
 	_body_mat.set_shader_parameter("preview_reveal", 0.0)

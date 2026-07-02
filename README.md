@@ -83,40 +83,49 @@ invisível; quando a onda a atinge, a superfície inteira brilha e dali em diant
 ### Idiomas (i18n)
 Os textos da interface (`ENCONTRE A SAÍDA`, `REINICIAR`) usam o padrão de
 internacionalização do Godot via chaves (`tr("FIND_THE_EXIT")`, `tr("RESTART")`).
-As traduções ficam em `scripts/i18n.gd` (pt_BR, en, es) e o idioma é escolhido
-pelo locale do sistema. Para adicionar um idioma, basta acrescentar os textos das
-mesmas chaves para o novo locale em `i18n.gd`.
+As traduções ficam em `scripts/managers/i18n.gd` (pt_BR, en, es) e o idioma é
+escolhido pelo locale do sistema. Para adicionar um idioma, basta acrescentar os
+textos das mesmas chaves para o novo locale em `i18n.gd`.
 
 ## Estrutura
-- `scenes/main.tscn` — cena principal (monta ambiente, sala e player via `scripts/main.gd`)
-- `scripts/wave_manager.gd` — autoload; ondas, carga compartilhada das habilidades, super-audição e parâmetros globais do shader
-- `scripts/player.gd` — controlador FPS, emissão de onda e ativação da super-audição
-- `scripts/level.gd` — gera a sala (chão, teto, paredes, pilares, caixas) com colisão
-- `assets/sonar.gdshader` — material de sonar (pontos neon + frente de onda + fade)
-- `scripts/wave_cooldown_hud.gd` — HUD da onda (arte PNG, barras que enchem com a carga, brilho dos olhos, pose por habilidade)
-- `assets/wave_power.png`, `assets/super_hearing.png`, `assets/power_bar.png` — arte do HUD (corpo, pose alternativa, barras)
-- `scripts/test_capture.gd` — harness de teste automático das ondas
-- `scripts/tablet.gd` — um tablet do desafio (revela amarelo / ativa verde)
-- `scripts/tablet_manager.gd` — autoload; conta os tablets, abre/resolve o minigame
-- `scripts/tablet_minigame_ui.gd` — minigame de sincronização (malha por scroll x anel-alvo)
-- `scripts/tablet_counter_hud.gd` — contador `0 / 5` na tela
-- `assets/tablet.gdshader` — material dos tablets (amarelo na onda, verde ao ativar)
-- `scripts/test_tablets.gd` — harness de teste do desafio dos tablets
-- `scripts/door.gd` — porta de saída (moldura na onda / miolo verde ao abrir)
-- `scripts/door_manager.gd` — autoload; resolve a abertura da porta com **E**
-- `assets/door.gdshader` — material da porta (moldura persistente + miolo verde)
-- `scripts/restart_ui.gd` — interface **REINICIAR** (recarrega o jogo)
-- `scripts/i18n.gd` — autoload; traduções da interface (padrão i18n do Godot)
-- `scripts/test_doors.gd` — harness de teste da porta de saída
-- `scripts/abbath.gd` — a criatura Abbath (silhueta na onda, teleporte, visão em cone, áudio 3D, jumpscare)
-- `scripts/abbath_manager.gd` — autoload; rastreia a criatura e centraliza o jumpscare
-- `assets/abbath.gdshader` — material da criatura (marca só a lateral/silhueta)
-- `assets/abbath.glb` — modelo 3D usado para montar o vulto
-- `scripts/debug_hud.gd` — painel de diagnóstico do Abbath (Ctrl+D)
-- `scripts/test_abbath.gd` — harness de teste da criatura Abbath
-- `scripts/test_abbath_sound.gd` — harness do áudio 3D do Abbath (cone, oclusão, super-audição)
-- `scripts/test_hud_pose.gd` — harness das poses do HUD da onda
-- `scripts/test_debug_hud.gd` — harness do painel de diagnóstico
+Os scripts são organizados por domínio dentro de `scripts/`:
+
+- `scenes/main.tscn` — cena principal; aponta para `scripts/main.gd`
+- `scripts/main.gd` — ponto de composição: monta ambiente, sala, player, HUDs e (em teste) os harnesses
+
+**`scripts/managers/`** (autoloads — estado global e coordenação)
+- `wave_manager.gd` — ondas, carga compartilhada das habilidades, super-audição e parâmetros globais do shader
+- `tablet_manager.gd` — conta os tablets, abre/resolve o minigame
+- `door_manager.gd` — resolve a abertura da porta com **E**
+- `abbath_manager.gd` — rastreia a criatura e centraliza o jumpscare
+- `i18n.gd` — traduções da interface (padrão i18n do Godot)
+
+**`scripts/gameplay/`** (entidades do mundo 3D)
+- `player.gd` — controlador FPS, emissão de onda e ativação da super-audição
+- `level.gd` — gera a sala (chão, teto, paredes, pilares, caixas) com colisão
+- `abbath.gd` — a criatura Abbath (silhueta na onda, teleporte, visão em cone, áudio 3D, jumpscare)
+- `tablet.gd` — um tablet do desafio (revela amarelo / ativa verde)
+- `door.gd` — porta de saída (moldura na onda / miolo verde ao abrir)
+
+**`scripts/ui/`** (interface em `CanvasLayer`)
+- `wave_cooldown_hud.gd` — HUD da onda (arte PNG, barras que enchem com a carga, brilho dos olhos, pose por habilidade)
+- `tablet_minigame_ui.gd` — minigame de sincronização (malha por scroll x anel-alvo)
+- `tablet_counter_hud.gd` — contador `0 / 5` na tela
+- `restart_ui.gd` — interface **REINICIAR** (recarrega o jogo)
+- `debug_hud.gd` — painel de diagnóstico do Abbath (Ctrl+D)
+
+**`scripts/test/`** (harnesses acionados por flag de linha de comando)
+- `test_capture.gd` — ondas · `test_tablets.gd` — desafio dos tablets · `test_doors.gd` — porta de saída
+- `test_abbath.gd` — criatura · `test_abbath_sound.gd` — áudio 3D (cone, oclusão, super-audição)
+- `test_hud_pose.gd` — poses do HUD · `test_debug_hud.gd` — painel de diagnóstico
+
+**`assets/`**
+- `shaders/sonar.gdshader` — material de sonar (pontos neon + frente de onda + fade)
+- `shaders/tablet.gdshader` — material dos tablets (amarelo na onda, verde ao ativar)
+- `shaders/door.gdshader` — material da porta (moldura persistente + miolo verde)
+- `shaders/abbath.gdshader` — material da criatura (marca só a lateral/silhueta)
+- `abbath.glb` — modelo 3D usado para montar o vulto
+- `wave_power.png`, `super_hearing.png`, `power_bar.png` — arte do HUD (corpo, pose alternativa, barras)
 
 ## Som
 - `sounds/wave.ogg` — estouro da onda ao emitir, com atenuação por alcance.

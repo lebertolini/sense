@@ -17,11 +17,11 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-I18n="*res://scripts/i18n.gd"
-WaveManager="*res://scripts/wave_manager.gd"
-TabletManager="*res://scripts/tablet_manager.gd"
-DoorManager="*res://scripts/door_manager.gd"
-AbbathManager="*res://scripts/abbath_manager.gd"
+I18n="*res://scripts/managers/i18n.gd"
+WaveManager="*res://scripts/managers/wave_manager.gd"
+TabletManager="*res://scripts/managers/tablet_manager.gd"
+DoorManager="*res://scripts/managers/door_manager.gd"
+AbbathManager="*res://scripts/managers/abbath_manager.gd"
 
 [display]
 

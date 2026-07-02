@@ -29,11 +29,11 @@ func _ready() -> void:
 
 	var level := Node3D.new()
 	level.name = "Level"
-	level.set_script(load("res://scripts/level.gd"))
+	level.set_script(load("res://scripts/gameplay/level.gd"))
 	add_child(level)
 
 	var player := CharacterBody3D.new()
-	player.set_script(load("res://scripts/player.gd"))
+	player.set_script(load("res://scripts/gameplay/player.gd"))
 	player.position = Vector3(-50.0, 1.5, -42.0)
 	add_child(player)
 	# Vira o player para o centro da sala (apenas yaw).
@@ -42,7 +42,7 @@ func _ready() -> void:
 
 	var abbath := Node3D.new()
 	abbath.name = "Abbath"
-	abbath.set_script(load("res://scripts/abbath.gd"))
+	abbath.set_script(load("res://scripts/gameplay/abbath.gd"))
 	abbath.set("player", player)
 	abbath.set("pillars", level.pillars)
 	add_child(abbath)
@@ -52,68 +52,68 @@ func _ready() -> void:
 	add_child(hud_layer)
 	var wave_hud := Control.new()
 	wave_hud.name = "WaveCooldownHud"
-	wave_hud.set_script(load("res://scripts/wave_cooldown_hud.gd"))
+	wave_hud.set_script(load("res://scripts/ui/wave_cooldown_hud.gd"))
 	hud_layer.add_child(wave_hud)
 
 	var tablet_hud := Label.new()
 	tablet_hud.name = "TabletCounterHud"
-	tablet_hud.set_script(load("res://scripts/tablet_counter_hud.gd"))
+	tablet_hud.set_script(load("res://scripts/ui/tablet_counter_hud.gd"))
 	hud_layer.add_child(tablet_hud)
 
 	var tablet_minigame := Control.new()
 	tablet_minigame.name = "TabletMinigameUi"
-	tablet_minigame.set_script(load("res://scripts/tablet_minigame_ui.gd"))
+	tablet_minigame.set_script(load("res://scripts/ui/tablet_minigame_ui.gd"))
 	hud_layer.add_child(tablet_minigame)
 
 	var restart_ui := Control.new()
 	restart_ui.name = "RestartUi"
-	restart_ui.set_script(load("res://scripts/restart_ui.gd"))
+	restart_ui.set_script(load("res://scripts/ui/restart_ui.gd"))
 	hud_layer.add_child(restart_ui)
 
 	var debug_hud := PanelContainer.new()
-	debug_hud.set_script(load("res://scripts/debug_hud.gd"))
+	debug_hud.set_script(load("res://scripts/ui/debug_hud.gd"))
 	debug_hud.set("abbath_ref", abbath)
 	hud_layer.add_child(debug_hud)
 
 	if args.has("--autotest"):
 		var t := Node.new()
-		t.set_script(load("res://scripts/test_capture.gd"))
+		t.set_script(load("res://scripts/test/test_capture.gd"))
 		add_child(t)
 
 	if args.has("--hudposetest"):
 		var hp := Node.new()
-		hp.set_script(load("res://scripts/test_hud_pose.gd"))
+		hp.set_script(load("res://scripts/test/test_hud_pose.gd"))
 		add_child(hp)
 
 	if args.has("--debughudtest"):
 		var dh := Node.new()
-		dh.set_script(load("res://scripts/test_debug_hud.gd"))
+		dh.set_script(load("res://scripts/test/test_debug_hud.gd"))
 		dh.set("player_ref", player)
 		dh.set("abbath_ref", abbath)
 		add_child(dh)
 
 	if args.has("--tablettest"):
 		var tt := Node.new()
-		tt.set_script(load("res://scripts/test_tablets.gd"))
+		tt.set_script(load("res://scripts/test/test_tablets.gd"))
 		tt.set("player_ref", player)
 		add_child(tt)
 
 	if args.has("--doortest"):
 		var dt := Node.new()
-		dt.set_script(load("res://scripts/test_doors.gd"))
+		dt.set_script(load("res://scripts/test/test_doors.gd"))
 		dt.set("player_ref", player)
 		add_child(dt)
 
 	if args.has("--abbathtest"):
 		var at := Node.new()
-		at.set_script(load("res://scripts/test_abbath.gd"))
+		at.set_script(load("res://scripts/test/test_abbath.gd"))
 		at.set("player_ref", player)
 		at.set("abbath_ref", abbath)
 		add_child(at)
 
 	if args.has("--abbathsoundtest"):
 		var ast := Node.new()
-		ast.set_script(load("res://scripts/test_abbath_sound.gd"))
+		ast.set_script(load("res://scripts/test/test_abbath_sound.gd"))
 		ast.set("player_ref", player)
 		ast.set("abbath_ref", abbath)
 		add_child(ast)
@@ -121,7 +121,7 @@ func _ready() -> void:
 func _setup_abbath_model_test(keep_open: bool = false) -> void:
 	var abbath := Node3D.new()
 	abbath.name = "AbbathModelPreview"
-	abbath.set_script(load("res://scripts/abbath.gd"))
+	abbath.set_script(load("res://scripts/gameplay/abbath.gd"))
 	add_child(abbath)
 
 	var cam := Camera3D.new()
@@ -135,7 +135,7 @@ func _setup_abbath_model_test(keep_open: bool = false) -> void:
 	add_child(cam)
 
 	var t := Node.new()
-	t.set_script(load("res://scripts/test_abbath.gd"))
+	t.set_script(load("res://scripts/test/test_abbath.gd"))
 	t.set("model_only", true)
 	t.set("keep_model_view_open", keep_open)
 	t.set("abbath_ref", abbath)

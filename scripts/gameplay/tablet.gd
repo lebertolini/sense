@@ -14,7 +14,7 @@ func setup(p_size: Vector3, p_normal: Vector3) -> void:
 	face_normal = p_normal.normalized()
 
 func _ready() -> void:
-	var shader: Shader = load("res://assets/tablet.gdshader")
+	var shader: Shader = load("res://assets/shaders/tablet.gdshader")
 	_mat = ShaderMaterial.new()
 	_mat.shader = shader
 	_mat.set_shader_parameter("activated", false)
