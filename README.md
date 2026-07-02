@@ -90,9 +90,14 @@ textos das mesmas chaves para o novo locale em `i18n.gd`.
 ## Estrutura
 Os scripts são organizados por domínio dentro de `scripts/`:
 
-- `scenes/main.tscn` — cena principal; aponta para `scripts/main.gd`
+- `scenes/main.tscn` — cena principal; contém o `WorldEnvironment` (escuro + glow) e aponta para `scripts/main.gd`
+- `scenes/player.tscn` — player (`CharacterBody3D` + cápsula de colisão + câmera `Head`); instanciado pelo `main.gd`
 - `scenes/hud.tscn` — camada de interface (`CanvasLayer`) com os HUDs; instanciada pelo `main.gd`
-- `scripts/main.gd` — ponto de composição: monta ambiente, sala, player, instancia o HUD e (em teste) os harnesses
+- `scripts/main.gd` — ponto de composição: gera o nível, instancia player/HUD, cria o Abbath e (em teste) os harnesses
+
+> A composição declarativa mora em cenas `.tscn`; o que é procedural — a geração
+> da sala (`level.gd`) e o corpo do Abbath montado do `.glb` (`abbath.gd`) —
+> permanece em código, por ser gerado em runtime.
 
 **`scripts/managers/`** (autoloads — estado global e coordenação)
 - `wave_manager.gd` — ondas, carga compartilhada das habilidades, super-audição e parâmetros globais do shader
