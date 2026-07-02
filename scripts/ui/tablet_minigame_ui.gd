@@ -27,7 +27,6 @@ var _wave_values: Array[float] = []
 var _wave_next_values: Array[float] = []
 var _rng := RandomNumberGenerator.new()
 var _active := false
-var _shape_lock_for_test := false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -50,7 +49,6 @@ func _on_requested(tablet, player) -> void:
 	_rng.randomize()
 	_wave_values = _make_random_wave_values()
 	_wave_next_values = _make_random_wave_values()
-	_shape_lock_for_test = false
 	_active = true
 	visible = true
 	if _player != null and is_instance_valid(_player) and _player.has_method("set_tablet_minigame_active"):
@@ -91,12 +89,8 @@ func _process(delta: float) -> void:
 
 	_shape_time += delta
 	_update_wave_map(delta)
-	if _shape_lock_for_test:
-		_player_shape_target = _target_shape()
-		_player_shape = _target_shape()
-	else:
-		var k := 1.0 - exp(-PLAYER_SHAPE_SMOOTH_SPEED * delta)
-		_player_shape = lerpf(_player_shape, _player_shape_target, k)
+	var k := 1.0 - exp(-PLAYER_SHAPE_SMOOTH_SPEED * delta)
+	_player_shape = lerpf(_player_shape, _player_shape_target, k)
 	if _is_aligned():
 		_hold_time += delta
 		if _hold_time >= _hold_required():
@@ -129,41 +123,6 @@ func _complete_stage() -> void:
 	TabletManager.save_stage(_tablet, _stage)
 	_player_shape = 0.0
 	_player_shape_target = 0.0
-
-func force_complete_for_test() -> void:
-	if not _active or _tablet == null:
-		return
-	var t = _tablet
-	_hide_ui()
-	TabletManager.complete_minigame(t)
-
-func force_complete_stage_for_test() -> void:
-	if _active:
-		_complete_stage()
-
-func get_stage_for_test() -> int:
-	return _stage
-
-func get_hold_time_for_test() -> float:
-	return _hold_time
-
-func get_hold_required_for_test() -> float:
-	return _hold_required()
-
-func get_target_shape_for_test() -> float:
-	return _target_shape()
-
-func get_player_shape_for_test() -> float:
-	return _player_shape
-
-func get_player_shape_target_for_test() -> float:
-	return _player_shape_target
-
-func set_player_shape_target_for_test(shape: float) -> void:
-	_player_shape_target = clampf(shape, 0.0, PLAYER_SHAPE_MAX)
-
-func set_shape_lock_for_test(active: bool) -> void:
-	_shape_lock_for_test = active
 
 func _draw() -> void:
 	if not _active:

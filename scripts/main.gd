@@ -2,6 +2,20 @@ extends Node3D
 ## Monta a cena: a sala e o player. O ambiente escuro com glow (WorldEnvironment)
 ## e o HUD vem de cenas (main.tscn / hud.tscn).
 
+# Harnesses de teste: cada flag de linha de comando mapeia para o script a montar.
+# O codigo de producao (player, minigame) nao conhece nenhuma flag; tudo mora aqui.
+const TEST_HARNESSES := {
+	"--autotest": "res://scripts/test/test_capture.gd",
+	"--hudposetest": "res://scripts/test/test_hud_pose.gd",
+	"--debughudtest": "res://scripts/test/test_debug_hud.gd",
+	"--tablettest": "res://scripts/test/test_tablets.gd",
+	"--doortest": "res://scripts/test/test_doors.gd",
+	"--abbathtest": "res://scripts/test/test_abbath.gd",
+	"--abbathsoundtest": "res://scripts/test/test_abbath_sound.gd",
+}
+# Modelagem isolada do Abbath (tratada a parte, com retorno antecipado).
+const MODEL_TEST_FLAGS := ["--abbathmodeltest", "--abbathmodelview"]
+
 func _ready() -> void:
 	_setup_display()
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
@@ -17,6 +31,9 @@ func _ready() -> void:
 
 	var player: CharacterBody3D = (load("res://scenes/player.tscn") as PackedScene).instantiate()
 	player.position = Vector3(-50.0, 1.5, -42.0)
+	# Em execucao de teste nao capturamos o mouse (o player nao le mais as flags).
+	if _is_headless_test(args):
+		player.set("capture_mouse", false)
 	add_child(player)
 	# Vira o player para o centro da sala (apenas yaw).
 	player.look_at(Vector3(0, 1.5, 0), Vector3.UP)
@@ -35,48 +52,16 @@ func _ready() -> void:
 	hud_layer.get_node("DebugHud").set("abbath_ref", abbath)
 	add_child(hud_layer)
 
-	if args.has("--autotest"):
-		var t := Node.new()
-		t.set_script(load("res://scripts/test/test_capture.gd"))
-		add_child(t)
-
-	if args.has("--hudposetest"):
-		var hp := Node.new()
-		hp.set_script(load("res://scripts/test/test_hud_pose.gd"))
-		add_child(hp)
-
-	if args.has("--debughudtest"):
-		var dh := Node.new()
-		dh.set_script(load("res://scripts/test/test_debug_hud.gd"))
-		dh.set("player_ref", player)
-		dh.set("abbath_ref", abbath)
-		add_child(dh)
-
-	if args.has("--tablettest"):
-		var tt := Node.new()
-		tt.set_script(load("res://scripts/test/test_tablets.gd"))
-		tt.set("player_ref", player)
-		add_child(tt)
-
-	if args.has("--doortest"):
-		var dt := Node.new()
-		dt.set_script(load("res://scripts/test/test_doors.gd"))
-		dt.set("player_ref", player)
-		add_child(dt)
-
-	if args.has("--abbathtest"):
-		var at := Node.new()
-		at.set_script(load("res://scripts/test/test_abbath.gd"))
-		at.set("player_ref", player)
-		at.set("abbath_ref", abbath)
-		add_child(at)
-
-	if args.has("--abbathsoundtest"):
-		var ast := Node.new()
-		ast.set_script(load("res://scripts/test/test_abbath_sound.gd"))
-		ast.set("player_ref", player)
-		ast.set("abbath_ref", abbath)
-		add_child(ast)
+	# Monta o harness pedido pela flag. set() ignora refs que o script nao declara,
+	# entao passamos player/abbath para todos sem precisar saber quem usa o que.
+	for flag in TEST_HARNESSES:
+		if not args.has(flag):
+			continue
+		var harness := Node.new()
+		harness.set_script(load(TEST_HARNESSES[flag]))
+		harness.set("player_ref", player)
+		harness.set("abbath_ref", abbath)
+		add_child(harness)
 
 func _setup_abbath_model_test(keep_open: bool = false) -> void:
 	var abbath := Node3D.new()
@@ -102,10 +87,20 @@ func _setup_abbath_model_test(keep_open: bool = false) -> void:
 	t.set("camera_ref", cam)
 	add_child(t)
 
+## True se alguma flag de teste/modelagem foi passada na linha de comando.
+func _is_headless_test(args) -> bool:
+	for flag in TEST_HARNESSES:
+		if args.has(flag):
+			return true
+	for flag in MODEL_TEST_FLAGS:
+		if args.has(flag):
+			return true
+	return false
+
 func _setup_display() -> void:
 	## Renderiza no tamanho real da tela conectada (resolucao nativa do monitor).
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-	if args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathsoundtest") or args.has("--abbathmodeltest") or args.has("--abbathmodelview") or args.has("--hudposetest") or args.has("--debughudtest"):
+	if _is_headless_test(args):
 		# Em teste: janela fixa para screenshots deterministicas.
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		get_window().size = Vector2i(1280, 720)

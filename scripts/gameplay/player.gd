@@ -14,6 +14,8 @@ const WALKING_SOUND := "res://sounds/walking.ogg"
 
 ## A colisao (capsula) e a camera "Head" vem de scenes/player.tscn.
 @onready var head: Camera3D = $Head
+# Em execucao normal capturamos o mouse; o main.gd zera isto em runs de teste.
+@export var capture_mouse := true
 var _pitch := -0.12
 var _footsteps: AudioStreamPlayer
 var _tablet_minigame_active := false
@@ -25,8 +27,7 @@ func _ready() -> void:
 
 	_setup_footsteps()
 
-	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-	if not (args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathmodeltest")):
+	if capture_mouse:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 # Cria um bus dedicado com reverb calibrado para a sala (~120x100x14m,

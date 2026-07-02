@@ -49,7 +49,7 @@ func _run() -> void:
 		await get_tree().process_frame
 		var ui = get_tree().root.find_child("TabletMinigameUi", true, false)
 		var opened: bool = ok and ui != null and ui.visible
-		if opened and i == 0 and ui.has_method("set_shape_lock_for_test"):
+		if opened and i == 0:
 			await _wait(0.35)
 			await _capture("tablet_minigame_stage_0")
 			await _capture("tablet_minigame_shortwaves_stage_0")
@@ -57,23 +57,23 @@ func _run() -> void:
 			await _capture("tablet_minigame_highcontrast_stage_0")
 			await _capture("tablet_minigame_dynamicwaves_stage_0")
 			await _capture("tablet_minigame_radio_stage_0")
-			if ui.has_method("set_player_shape_target_for_test"):
-				ui.set_player_shape_target_for_test(1.55)
-				await get_tree().process_frame
-				print("[tablettest] suavizacao inicio -> alvo_player=%.2f player=%.2f" % [
-					ui.get_player_shape_target_for_test(), ui.get_player_shape_for_test()])
-				await _capture("tablet_minigame_smooth_start")
-				await _wait(0.25)
-				print("[tablettest] suavizacao depois -> alvo_player=%.2f player=%.2f" % [
-					ui.get_player_shape_target_for_test(), ui.get_player_shape_for_test()])
+			# Demonstra a suavizacao do anel do jogador ao mudar o alvo (via scroll).
+			ui._player_shape_target = 1.55
+			await get_tree().process_frame
+			print("[tablettest] suavizacao inicio -> alvo_player=%.2f player=%.2f" % [
+				ui._player_shape_target, ui._player_shape])
+			await _capture("tablet_minigame_smooth_start")
+			await _wait(0.25)
+			print("[tablettest] suavizacao depois -> alvo_player=%.2f player=%.2f" % [
+				ui._player_shape_target, ui._player_shape])
 			await _capture("tablet_minigame_smooth_after")
 			await _capture("tablet_minigame_dynamicwaves_smooth_after")
 			await _capture("tablet_minigame_radio_smooth_after")
-			var req0: float = ui.get_hold_required_for_test() if ui.has_method("get_hold_required_for_test") else -1.0
+			var req0: float = ui._hold_required()
 			print("[tablettest] minigame etapa 0 requer %.2fs | alvo=%.2f player=%.2f" % [
-				req0, ui.get_target_shape_for_test(), ui.get_player_shape_for_test()])
-			ui.set_shape_lock_for_test(true)
-			await _wait(req0 + 0.14)
+				req0, ui._target_shape(), ui._player_shape])
+			ui._complete_stage()  # avanca 0 -> 1 (antes: lock de encaixe + espera do hold)
+			await get_tree().process_frame
 			await _capture("tablet_minigame_stage_1")
 			await _capture("tablet_minigame_shortwaves_stage_1")
 			await _capture("tablet_minigame_variedwaves_stage_1")
@@ -85,10 +85,8 @@ func _run() -> void:
 			await get_tree().process_frame
 			TabletManager.try_activate(pl.get_emit_origin(), pl.get_look_dir())
 			await get_tree().process_frame
-			var resumed_stage: int = ui.get_stage_for_test() if ui.has_method("get_stage_for_test") else -1
-			var resumed_hold: float = ui.get_hold_time_for_test() if ui.has_method("get_hold_time_for_test") else -1.0
 			print("[tablettest] retomada -> etapa_salva=%d etapa_ui=%d hold=%.2f" % [
-				saved_stage, resumed_stage, resumed_hold])
+				saved_stage, ui._stage, ui._hold_time])
 			await _wait(0.2)
 			await _capture("tablet_minigame_stage_1_retomada")
 			await _capture("tablet_minigame_shortwaves_stage_1_retomada")
@@ -96,24 +94,27 @@ func _run() -> void:
 			await _capture("tablet_minigame_highcontrast_stage_1_retomada")
 			await _capture("tablet_minigame_dynamicwaves_stage_1_retomada")
 			await _capture("tablet_minigame_radio_stage_1_retomada")
-			var req1: float = ui.get_hold_required_for_test() if ui.has_method("get_hold_required_for_test") else -1.0
+			var req1: float = ui._hold_required()
 			print("[tablettest] minigame etapa 1 requer %.2fs | alvo=%.2f player=%.2f" % [
-				req1, ui.get_target_shape_for_test(), ui.get_player_shape_for_test()])
-			ui.set_shape_lock_for_test(true)
-			await _wait(req1 + 0.14)
+				req1, ui._target_shape(), ui._player_shape])
+			ui._complete_stage()  # avanca 1 -> 2
+			await get_tree().process_frame
 			await _capture("tablet_minigame_stage_2")
 			await _capture("tablet_minigame_shortwaves_stage_2")
 			await _capture("tablet_minigame_variedwaves_stage_2")
 			await _capture("tablet_minigame_highcontrast_stage_2")
 			await _capture("tablet_minigame_dynamicwaves_stage_2")
 			await _capture("tablet_minigame_radio_stage_2")
-			var req2: float = ui.get_hold_required_for_test() if ui.has_method("get_hold_required_for_test") else -1.0
+			var req2: float = ui._hold_required()
 			print("[tablettest] minigame etapa 2 requer %.2fs | alvo=%.2f player=%.2f" % [
-				req2, ui.get_target_shape_for_test(), ui.get_player_shape_for_test()])
-			ui.set_shape_lock_for_test(true)
-			await _wait(req2 + 0.14)
-		elif opened and ui.has_method("force_complete_for_test"):
-			ui.force_complete_for_test()
+				req2, ui._target_shape(), ui._player_shape])
+			ui._complete_stage()  # avanca 2 -> conclui e ativa o tablet
+			await get_tree().process_frame
+		elif opened:
+			# Conclui direto o minigame (antes: force_complete_for_test).
+			var ct = ui._tablet
+			ui._hide_ui()
+			TabletManager.complete_minigame(ct)
 		print("[tablettest] tablet %d -> minigame=%s ativado=%s | contador=%d/%d" % [
 			i, opened, t.is_activated, TabletManager.activated_count, TabletManager.TOTAL])
 		await _wait(0.12)
