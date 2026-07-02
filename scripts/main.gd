@@ -111,6 +111,13 @@ func _ready() -> void:
 		at.set("abbath_ref", abbath)
 		add_child(at)
 
+	if args.has("--abbathsoundtest"):
+		var ast := Node.new()
+		ast.set_script(load("res://scripts/test_abbath_sound.gd"))
+		ast.set("player_ref", player)
+		ast.set("abbath_ref", abbath)
+		add_child(ast)
+
 func _setup_abbath_model_test(keep_open: bool = false) -> void:
 	var abbath := Node3D.new()
 	abbath.name = "AbbathModelPreview"
@@ -138,7 +145,7 @@ func _setup_abbath_model_test(keep_open: bool = false) -> void:
 func _setup_display() -> void:
 	## Renderiza no tamanho real da tela conectada (resolucao nativa do monitor).
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-	if args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathmodeltest") or args.has("--abbathmodelview") or args.has("--hudposetest") or args.has("--debughudtest"):
+	if args.has("--autotest") or args.has("--tablettest") or args.has("--doortest") or args.has("--abbathtest") or args.has("--abbathsoundtest") or args.has("--abbathmodeltest") or args.has("--abbathmodelview") or args.has("--hudposetest") or args.has("--debughudtest"):
 		# Em teste: janela fixa para screenshots deterministicas.
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		get_window().size = Vector2i(1280, 720)

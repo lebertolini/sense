@@ -107,7 +107,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				TabletManager.cancel_minigame()
 			return
 		if event.physical_keycode == KEY_SPACE:
-			WaveManager.emit_wave(get_emit_origin(), get_emit_dir())
+			if WaveManager.is_wave_selected():
+				WaveManager.emit_wave(get_emit_origin(), get_emit_dir())
 		elif event.physical_keycode == KEY_E:
 			# E ativa um tablet; sem tablet na mira, tenta abrir a saida.
 			if not TabletManager.try_activate(get_emit_origin(), get_look_dir(), self):
@@ -116,6 +117,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _physics_process(delta: float) -> void:
+	WaveManager.set_super_hearing_requested(
+		not _tablet_minigame_active
+		and Input.is_physical_key_pressed(KEY_SPACE)
+		and WaveManager.is_super_hearing_selected()
+	)
+
 	var input_dir := Vector3.ZERO
 	if Input.is_physical_key_pressed(KEY_W):
 		input_dir.z -= 1.0

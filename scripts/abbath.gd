@@ -81,6 +81,19 @@ const EYE_HEIGHT_FRACTION := 0.905                 # altura dos olhos (fracao da
 const EYE_SPREAD_FRACTION := 0.075                 # separacao (fracao da largura)
 const EYE_FRONT_FRACTION := 0.92                   # avanco a frente (fracao da meia-profundidade)
 const EYE_RADIUS := 0.06
+const ABBATH_SOUND := "res://sounds/abbath.ogg"
+const ABBATH_SOUND_MAX_DISTANCE := 30.0
+const ABBATH_SOUND_FULL_VOLUME_DISTANCE := 5.0
+const ABBATH_SOUND_CLOSE_BOOST := 1.4
+const ABBATH_SOUND_GLOBAL_GAIN := 0.5
+const ABBATH_SOUND_OCCLUDED_GAIN := 0.01
+const ABBATH_SOUND_BASE_DB := 18.0
+const ABBATH_SOUND_SUPER_HEARING_DB := 24.0
+const ABBATH_SOUND_SILENCE_DB := -60.0
+const PLAYER_VISIBLE_SOUND_COS := 0.5
+const ENEMY_FOCUS_BUS := &"EnemyFocus"
+
+var _sound: AudioStreamPlayer3D
 
 func _ready() -> void:
 	_rng.randomize()
@@ -97,9 +110,43 @@ func _ready() -> void:
 	_eye_mat.emission_energy_multiplier = EYE_IDLE_ENERGY
 
 	_build_body()
+	_setup_sound()
 
 	AbbathManager.register(self)
 	teleport_random()
+
+func _setup_sound() -> void:
+	_ensure_enemy_focus_bus()
+	_sound = AudioStreamPlayer3D.new()
+	_sound.bus = ENEMY_FOCUS_BUS
+	_sound.volume_db = ABBATH_SOUND_SILENCE_DB
+	_sound.max_db = ABBATH_SOUND_SUPER_HEARING_DB
+	_sound.unit_size = 1.0
+	_sound.max_distance = ABBATH_SOUND_MAX_DISTANCE
+	_sound.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
+	var stream: AudioStream = load(ABBATH_SOUND)
+	if stream == null:
+		push_warning("Som do Abbath nao encontrado em %s." % ABBATH_SOUND)
+	else:
+		if stream is AudioStreamOggVorbis:
+			(stream as AudioStreamOggVorbis).loop = true
+		elif stream is AudioStreamMP3:
+			(stream as AudioStreamMP3).loop = true
+		elif stream is AudioStreamWAV:
+			(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+		_sound.stream = stream
+	add_child(_sound)
+	if _sound.stream != null:
+		_sound.play()
+
+func _ensure_enemy_focus_bus() -> void:
+	var bus_idx := AudioServer.get_bus_index(ENEMY_FOCUS_BUS)
+	if bus_idx != -1:
+		return
+	bus_idx = AudioServer.bus_count
+	AudioServer.add_bus(bus_idx)
+	AudioServer.set_bus_name(bus_idx, ENEMY_FOCUS_BUS)
+	AudioServer.set_bus_send(bus_idx, &"Master")
 
 # --- Construcao do vulto a partir do modelo 3D ----------------------------
 
@@ -242,7 +289,7 @@ func would_hunt_at(dist: float, visible: float) -> bool:
 func can_see_player() -> bool:
 	if not is_player_in_cone():
 		return false
-	var dist := global_position.distance_to(player.global_position)
+	var dist := _sound_distance_to_player()
 	return would_hunt_at(dist, visible_fraction())
 
 # Compatibilidade para chamadas externas: na nova caca, perseguir exige que o
@@ -401,8 +448,10 @@ func face(target: Vector3) -> void:
 
 func _process(delta: float) -> void:
 	if player == null or AbbathManager.caught:
+		_update_sound()
 		return
 
+	_update_sound()
 	var player_visible := can_see_player()
 	if hunting:
 		_process_hunt(delta, player_visible)
@@ -422,4 +471,58 @@ func _update_eyes() -> void:
 
 func _catch() -> void:
 	AbbathManager.trigger_jumpscare()
+	if _sound != null:
+		_sound.volume_db = ABBATH_SOUND_SILENCE_DB
 	set_process(false)
+
+func _update_sound() -> void:
+	if _sound == null or _sound.stream == null:
+		return
+	if not _sound.playing:
+		_sound.play()
+	_sound.volume_db = _abbath_sound_volume_db()
+
+func _abbath_sound_volume_db() -> float:
+	if player == null:
+		return ABBATH_SOUND_SILENCE_DB
+	var dist := _sound_distance_to_player()
+	if dist > ABBATH_SOUND_MAX_DISTANCE:
+		return ABBATH_SOUND_SILENCE_DB
+	var super_hearing := WaveManager.is_super_hearing_active()
+	var amplitude := _abbath_sound_amplitude(dist) * ABBATH_SOUND_GLOBAL_GAIN
+	if not super_hearing:
+		if not _is_in_player_sound_cone(dist):
+			return ABBATH_SOUND_SILENCE_DB
+		if not _has_clear_sound_line():
+			amplitude *= ABBATH_SOUND_OCCLUDED_GAIN
+	var base_db := ABBATH_SOUND_SUPER_HEARING_DB if super_hearing else ABBATH_SOUND_BASE_DB
+	return maxf(base_db + linear_to_db(maxf(amplitude, 0.001)), ABBATH_SOUND_SILENCE_DB)
+
+func _abbath_sound_amplitude(dist: float) -> float:
+	var span := maxf(ABBATH_SOUND_MAX_DISTANCE - ABBATH_SOUND_FULL_VOLUME_DISTANCE, 0.001)
+	var t := clampf((ABBATH_SOUND_MAX_DISTANCE - dist) / span, 0.0, 1.0)
+	return lerpf(1.0, ABBATH_SOUND_CLOSE_BOOST, t)
+
+func _is_in_player_sound_cone(dist: float) -> bool:
+	if player == null:
+		return false
+	var origin: Vector3 = player.get_emit_origin() if player.has_method("get_emit_origin") else player.global_position + Vector3.UP * 1.6
+	var to_target := _eye_origin() - origin
+	if dist < 0.001 or dist > ABBATH_SOUND_MAX_DISTANCE:
+		return false
+	var look_dir: Vector3 = player.get_look_dir() if player.has_method("get_look_dir") else -player.global_transform.basis.z
+	return look_dir.normalized().dot(to_target.normalized()) >= PLAYER_VISIBLE_SOUND_COS
+
+func _has_clear_sound_line() -> bool:
+	if player == null:
+		return false
+	var origin: Vector3 = player.get_emit_origin() if player.has_method("get_emit_origin") else player.global_position + Vector3.UP * 1.6
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(origin, _eye_origin())
+	q.exclude = [player.get_rid()]
+	return space.intersect_ray(q).is_empty()
+
+func _sound_distance_to_player() -> float:
+	if player == null:
+		return INF
+	return Vector2(global_position.x, global_position.z).distance_to(Vector2(player.global_position.x, player.global_position.z))

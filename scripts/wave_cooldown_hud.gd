@@ -80,7 +80,9 @@ func _ready() -> void:
 
 	WaveManager.cooldown_changed.connect(_on_cooldown_changed)
 	WaveManager.wave_used.connect(_on_wave_used)
+	WaveManager.ability_changed.connect(_on_ability_changed)
 	_on_cooldown_changed(WaveManager.get_cooldown_progress(), WaveManager.is_wave_ready())
+	_on_ability_changed(WaveManager.selected_ability())
 
 func _process(delta: float) -> void:
 	if _draining:
@@ -102,10 +104,18 @@ func _on_cooldown_changed(progress: float, ready: bool) -> void:
 		_display_progress = _cooldown_progress
 
 func _on_wave_used() -> void:
+	if _alt_pose:
+		return
 	_wave_ready = false
 	_draining = true
 	_drain_t = 0.0
 	_drain_from = 1.0
+
+func _on_ability_changed(ability: int) -> void:
+	_alt_pose = ability == WaveManager.Ability.SUPER_HEARING
+	_draining = false
+	_on_cooldown_changed(WaveManager.get_cooldown_progress(), WaveManager.is_selected_ability_ready())
+	queue_redraw()
 
 func _draw() -> void:
 	var s := size / HUD_SIZE
@@ -153,8 +163,7 @@ func _draw_power_eyes() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_TAB:
-			_alt_pose = not _alt_pose
-			queue_redraw()
+			WaveManager.toggle_ability()
 			get_viewport().set_input_as_handled()
 
 func _draw_filled_ellipse(center: Vector2, radius: Vector2, color: Color) -> void:

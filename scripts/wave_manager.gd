@@ -9,12 +9,22 @@ const DIST_LIFETIME := 0.015
 const MAX_DIST := 220.0
 const CONE := 0.0  # 0 = hemisferio frontal completo (toda a frente do personagem)
 const COOLDOWN := 3.0
+const SHARED_CHARGE_RECHARGE_PER_SECOND := 1.0 / COOLDOWN
+const SUPER_HEARING_DRAIN_PER_SECOND := 0.28
 const WAVE_SOUND := "res://sounds/wave.ogg"
 const WAVE_SOUND_VOLUME_DB := -2.0
 const WAVE_SOUND_SILENCE_DB := -60.0
+const WAVE_SOUND_DUCK_DB := -14.0
+const FOOTSTEPS_BUS := &"Footsteps"
+const FOOTSTEPS_NORMAL_DB := 0.0
+const FOOTSTEPS_DUCK_DB := -18.0
+
+enum Ability { WAVE, SUPER_HEARING }
 
 signal cooldown_changed(progress: float, ready: bool)
 signal wave_used
+signal ability_changed(ability: int)
+signal super_hearing_changed(active: bool, charge: float)
 
 var _elapsed := []
 var _active := []
@@ -22,10 +32,14 @@ var _origins := []
 var _dirs := []
 var _next := 0
 var _cutoff := 0.0
-var _cooldown_remaining := 0.0
+var _cooldown_remaining := 0.0  # compat: testes antigos ainda forcam este campo
 var _is_wave_ready := true
 var _wave_sound: AudioStreamPlayer
 var _wave_sound_elapsed := 0.0
+var _selected_ability := Ability.WAVE
+var _shared_charge := 1.0
+var _super_hearing_requested := false
+var _super_hearing_active := false
 
 var player  # referencia opcional ao player (definida pelo player no _ready)
 
@@ -50,6 +64,8 @@ func _ready() -> void:
 	_cutoff = MAX_DIST / SPEED + LIFETIME + MAX_DIST * DIST_LIFETIME + 0.5
 	_setup_wave_sound()
 	cooldown_changed.emit(1.0, true)
+	ability_changed.emit(_selected_ability)
+	super_hearing_changed.emit(false, _shared_charge)
 
 func _setup_wave_sound() -> void:
 	_wave_sound = AudioStreamPlayer.new()
@@ -70,6 +86,41 @@ func _setup_wave_sound() -> void:
 
 func is_wave_ready() -> bool:
 	return _is_wave_ready
+
+func selected_ability() -> int:
+	return _selected_ability
+
+func is_wave_selected() -> bool:
+	return _selected_ability == Ability.WAVE
+
+func is_super_hearing_selected() -> bool:
+	return _selected_ability == Ability.SUPER_HEARING
+
+func is_super_hearing_active() -> bool:
+	return _super_hearing_active
+
+func get_super_hearing_charge() -> float:
+	return _shared_charge
+
+func toggle_ability() -> void:
+	set_selected_ability(Ability.SUPER_HEARING if _selected_ability == Ability.WAVE else Ability.WAVE)
+
+func set_selected_ability(ability: int) -> void:
+	if ability == _selected_ability:
+		return
+	_selected_ability = ability
+	if _selected_ability != Ability.SUPER_HEARING:
+		set_super_hearing_requested(false)
+	ability_changed.emit(_selected_ability)
+	cooldown_changed.emit(get_cooldown_progress(), is_selected_ability_ready())
+
+func is_selected_ability_ready() -> bool:
+	if _selected_ability == Ability.SUPER_HEARING:
+		return _shared_charge > 0.0
+	return is_wave_ready()
+
+func set_super_hearing_requested(requested: bool) -> void:
+	_super_hearing_requested = requested and _selected_ability == Ability.SUPER_HEARING
 
 ## True se a frente de alguma onda ativa ja alcancou `point` (dentro do alcance
 ## maximo). Usado por superficies que precisam reagir a passagem da onda no CPU
@@ -95,17 +146,23 @@ func reset() -> void:
 	_cooldown_remaining = 0.0
 	_is_wave_ready = true
 	_wave_sound_elapsed = 0.0
+	_selected_ability = Ability.WAVE
+	_shared_charge = 1.0
+	_super_hearing_requested = false
+	_set_super_hearing_active(false)
 	if _wave_sound != null:
 		_wave_sound.stop()
 	cooldown_changed.emit(1.0, true)
+	ability_changed.emit(_selected_ability)
+	super_hearing_changed.emit(false, _shared_charge)
 
 func get_cooldown_progress() -> float:
-	if _is_wave_ready:
-		return 1.0
-	return clampf(1.0 - _cooldown_remaining / COOLDOWN, 0.0, 1.0)
+	return _shared_charge
 
 func emit_wave(origin: Vector3, dir: Vector3 = Vector3.FORWARD) -> bool:
-	if not _is_wave_ready:
+	if _selected_ability != Ability.WAVE:
+		return false
+	if not is_wave_ready():
 		return false
 
 	_origins[_next] = origin
@@ -116,8 +173,9 @@ func emit_wave(origin: Vector3, dir: Vector3 = Vector3.FORWARD) -> bool:
 		"wave_dir_%d" % _next, Vector4(_dirs[_next].x, _dirs[_next].y, _dirs[_next].z, 0.0))
 	_next = (_next + 1) % N
 
-	_is_wave_ready = false
+	_shared_charge = 0.0
 	_cooldown_remaining = COOLDOWN
+	_is_wave_ready = false
 	_play_wave_sound()
 	wave_used.emit()
 	cooldown_changed.emit(0.0, false)
@@ -125,12 +183,7 @@ func emit_wave(origin: Vector3, dir: Vector3 = Vector3.FORWARD) -> bool:
 
 func _process(delta: float) -> void:
 	_update_wave_sound(delta)
-
-	if not _is_wave_ready:
-		_cooldown_remaining = maxf(_cooldown_remaining - delta, 0.0)
-		if _cooldown_remaining <= 0.0:
-			_is_wave_ready = true
-		cooldown_changed.emit(get_cooldown_progress(), _is_wave_ready)
+	_update_shared_charge(delta)
 
 	for i in N:
 		if not _active[i]:
@@ -149,7 +202,7 @@ func _play_wave_sound() -> void:
 	if _wave_sound == null or _wave_sound.stream == null:
 		return
 	_wave_sound_elapsed = 0.0
-	_wave_sound.volume_db = WAVE_SOUND_VOLUME_DB
+	_wave_sound.volume_db = _current_wave_sound_base_db()
 	_wave_sound.play()
 
 func _update_wave_sound(delta: float) -> void:
@@ -162,5 +215,36 @@ func _update_wave_sound(delta: float) -> void:
 	# fim do arquivo praticamente inaudivel, sem interromper sua cauda.
 	var amplitude: float = pow(1.0 - distance_ratio, 3.0)
 	_wave_sound.volume_db = maxf(
-		WAVE_SOUND_VOLUME_DB + linear_to_db(amplitude),
+		_current_wave_sound_base_db() + linear_to_db(amplitude),
 		WAVE_SOUND_SILENCE_DB)
+
+func _update_shared_charge(delta: float) -> void:
+	var prev_charge := _shared_charge
+	var was_wave_ready := is_wave_ready()
+	if _super_hearing_requested and _shared_charge > 0.0:
+		_shared_charge = maxf(_shared_charge - SUPER_HEARING_DRAIN_PER_SECOND * delta, 0.0)
+	elif not _super_hearing_requested:
+		_shared_charge = minf(_shared_charge + SHARED_CHARGE_RECHARGE_PER_SECOND * delta, 1.0)
+	_is_wave_ready = _shared_charge >= 1.0
+	_cooldown_remaining = (1.0 - _shared_charge) * COOLDOWN
+	_set_super_hearing_active(_super_hearing_requested and _shared_charge > 0.0)
+	if not is_equal_approx(prev_charge, _shared_charge) or was_wave_ready != is_wave_ready():
+		super_hearing_changed.emit(_super_hearing_active, _shared_charge)
+		cooldown_changed.emit(_shared_charge, is_selected_ability_ready())
+
+func _set_super_hearing_active(active: bool) -> void:
+	if active == _super_hearing_active:
+		return
+	_super_hearing_active = active
+	_apply_super_hearing_mix()
+	super_hearing_changed.emit(_super_hearing_active, _shared_charge)
+
+func _apply_super_hearing_mix() -> void:
+	var footstep_idx := AudioServer.get_bus_index(FOOTSTEPS_BUS)
+	if footstep_idx != -1:
+		AudioServer.set_bus_volume_db(footstep_idx, FOOTSTEPS_DUCK_DB if _super_hearing_active else FOOTSTEPS_NORMAL_DB)
+	if _wave_sound != null:
+		_wave_sound.volume_db = _current_wave_sound_base_db()
+
+func _current_wave_sound_base_db() -> float:
+	return WAVE_SOUND_DUCK_DB if _super_hearing_active else WAVE_SOUND_VOLUME_DB
