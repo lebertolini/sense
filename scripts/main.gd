@@ -1,27 +1,10 @@
 extends Node3D
-## Monta a cena: ambiente escuro com glow, a sala e o player.
+## Monta a cena: a sala e o player. O ambiente escuro com glow (WorldEnvironment)
+## e o HUD vem de cenas (main.tscn / hud.tscn).
 
 func _ready() -> void:
 	_setup_display()
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-
-	var we := WorldEnvironment.new()
-	we.name = "WorldEnvironment"
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color.BLACK
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
-	env.ambient_light_color = Color.BLACK
-	env.ambient_light_energy = 0.0
-	# Glow para os neons "brilharem" no escuro.
-	env.glow_enabled = true
-	env.glow_intensity = 1.0
-	env.glow_strength = 1.1
-	env.glow_bloom = 0.3
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
-	env.glow_hdr_threshold = 0.6
-	we.environment = env
-	add_child(we)
 
 	if args.has("--abbathmodeltest") or args.has("--abbathmodelview"):
 		_setup_abbath_model_test(args.has("--abbathmodelview"))
@@ -32,8 +15,7 @@ func _ready() -> void:
 	level.set_script(load("res://scripts/gameplay/level.gd"))
 	add_child(level)
 
-	var player := CharacterBody3D.new()
-	player.set_script(load("res://scripts/gameplay/player.gd"))
+	var player: CharacterBody3D = (load("res://scenes/player.tscn") as PackedScene).instantiate()
 	player.position = Vector3(-50.0, 1.5, -42.0)
 	add_child(player)
 	# Vira o player para o centro da sala (apenas yaw).

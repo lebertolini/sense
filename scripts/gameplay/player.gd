@@ -12,26 +12,13 @@ const WALK_MIN_SPEED := 0.6
 const FOOTSTEPS_BUS := &"Footsteps"
 const WALKING_SOUND := "res://sounds/walking.ogg"
 
-var head: Camera3D
+## A colisao (capsula) e a camera "Head" vem de scenes/player.tscn.
+@onready var head: Camera3D = $Head
 var _pitch := -0.12
 var _footsteps: AudioStreamPlayer
 var _tablet_minigame_active := false
 
 func _ready() -> void:
-	var cs := CollisionShape3D.new()
-	var cap := CapsuleShape3D.new()
-	cap.height = 1.8
-	cap.radius = 0.4
-	cs.shape = cap
-	cs.position.y = 0.9
-	add_child(cs)
-
-	head = Camera3D.new()
-	head.position = Vector3(0, 1.6, 0)
-	head.fov = 75.0
-	head.far = 200.0
-	head.current = true
-	add_child(head)
 	head.rotation.x = _pitch
 
 	WaveManager.player = self
